@@ -1,0 +1,1113 @@
+import { defineConfig, type Plugin } from 'vite'
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+import path from 'node:path'
+import fs from 'node:fs'
+
+const PORT = Number(process.env.PORT) > 0 && Number(process.env.PORT) < 65536 ? Number(process.env.PORT) : 8443
+const COMMON_SECURITY_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Resource-Policy': 'same-origin',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+}
+const DEVELOPMENT_CSP =
+  "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' https://image.tmdb.org data:; connect-src 'self' https://api.themoviedb.org; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; frame-src 'none'"
+const PRODUCTION_CSP =
+  "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' https://image.tmdb.org data:; connect-src 'self' https://api.themoviedb.org; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; frame-src 'none'"
+
+// Vite config — https://vitejs.dev/config/
+export default defineConfig({
+  plugins: [react(), tailwindcss(), cspIndexPlugin(), cinetrackSqlitePersistence()],
+  resolve: {
+    dedupe: ['react', 'react-dom'],
+  },
+  server: {
+    host: '127.0.0.1',
+    port: PORT,
+    strictPort: true,
+    watch: {
+      ignored: ['**/data/**', '**/*.db', '**/API.txt'],
+    },
+    fs: {
+      strict: true,
+      allow: [
+        path.resolve(import.meta.dirname, './src'),
+        path.resolve(import.meta.dirname, './index.html'),
+        path.resolve(import.meta.dirname, './node_modules/sql.js'),
+      ],
+    },
+    headers: { ...COMMON_SECURITY_HEADERS, 'Content-Security-Policy': DEVELOPMENT_CSP },
+    cors: false,
+  },
+  preview: {
+    host: '127.0.0.1',
+    port: PORT,
+    headers: { ...COMMON_SECURITY_HEADERS, 'Content-Security-Policy': PRODUCTION_CSP },
+  },
+  build: {
+    chunkSizeWarningLimit: 500,
+    target: 'es2020',
+    cssCodeSplit: true,
+    sourcemap: false,
+    assetsInlineLimit: 4096,
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (id.includes('node_modules/recharts') || id.includes('node_modules/d3-')) return 'charts'
+          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom') || id.includes('node_modules/scheduler')) return 'vendor'
+          return undefined
+        },
+      },
+    },
+  },
+})
+
+function cspIndexPlugin(): Plugin {
+  return {
+    name: 'cinetrack-csp-mode',
+    transformIndexHtml(html, ctx) {
+      // Vite injects dev-only inline refresh code. Keep the source/build HTML
+      // strict while allowing the development server's own CSP to do its job.
+      return ctx.server ? html.replace(PRODUCTION_CSP, DEVELOPMENT_CSP) : html
+    },
+  }
+}
+
+/**
+ * SQLite persistence — single source of truth at data/database.sqlite
+ * Works in both dev (`vite dev`) and preview (`vite preview`), so the
+ * project folder is self-contained. Copy the folder and the DB moves with it.
+ */
+function cinetrackSqlitePersistence(): Plugin {
+  const DB_PATH = path.resolve(import.meta.dirname, 'data/database.sqlite')
+  const WASM_PATH = path.resolve(import.meta.dirname, 'node_modules/sql.js/dist/sql-wasm.wasm')
+  const API_FILE = path.resolve(import.meta.dirname, 'API.txt')
+  const TMDB_BASE = 'https://api.themoviedb.org/3'
+  const MAX_BODY_BYTES = 64 * 1024 * 1024 // Matches the database size bound and supports portable custom posters.
+  const MAX_BODY_BYTES_SETTINGS = 256 * 1024
+
+  function isSafeCustomPoster(value: unknown): value is string {
+    if (typeof value !== 'string' || !value.startsWith('data:image/webp;base64,') || value.length > 2_796_228) return false
+    const payload = value.slice('data:image/webp;base64,'.length)
+    if (!payload || payload.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(payload)) return false
+    try {
+      const bytes = Buffer.from(payload, 'base64')
+      return bytes.byteLength <= 2 * 1024 * 1024
+        && bytes.toString('base64') === payload
+        && bytes.byteLength >= 16
+        && bytes.subarray(0, 4).toString('ascii') === 'RIFF'
+        && bytes.readUInt32LE(4) + 8 === bytes.byteLength
+        && bytes.subarray(8, 12).toString('ascii') === 'WEBP'
+        && ['VP8 ', 'VP8L', 'VP8X'].includes(bytes.subarray(12, 16).toString('ascii'))
+    } catch {
+      return false
+    }
+  }
+  const MAX_TIMESTAMP = 8_640_000_000_000_000
+  const CACHE_TTL_MS = 1000 * 60 * 60 * 24
+  const MAX_CACHE_ENTRIES = 200
+  const MAX_CACHE_BYTES = 16 * 1024 * 1024
+  const ALLOWED_TMDB_PREFIXES = ['/search/', '/discover/', '/trending/', '/movie/', '/tv/', '/genre/', '/person/']
+  const ALLOWED_TMDB_QUERY_KEYS = new Set([
+    'language',
+    'query',
+    'page',
+    'include_adult',
+    'sort_by',
+    'with_genres',
+    'vote_count.gte',
+    'append_to_response',
+  ])
+  const isSafeDbKey = (key: unknown): key is string => {
+    if (typeof key !== 'string') return false
+    const match = /^(movie|tv):(\d+)$/.exec(key)
+    return !!match && Number.isSafeInteger(Number(match[2])) && Number(match[2]) > 0
+  }
+  const isValidTimestamp = (value: unknown): value is number =>
+    typeof value === 'number' && Number.isSafeInteger(value) && Math.abs(value) <= MAX_TIMESTAMP
+
+  let cachedApiKey: string | null = null
+  let cachedApiKeyMtime = 0
+  let cachedDotEnv: Record<string, string> | null = null
+
+  // Minimal .env reader (no new deps). Vite's own loadEnv only surfaces
+  // VITE_-prefixed vars, so a plain TMDB_KEY would never reach this config —
+  // read it ourselves. .env.local wins over .env.
+  function readDotEnvFile(): Record<string, string> {
+    if (cachedDotEnv) return cachedDotEnv
+    const out: Record<string, string> = {}
+    try {
+      for (const name of ['.env', '.env.local']) {
+        const p = path.resolve(import.meta.dirname, name)
+        if (!fs.existsSync(p)) continue
+        for (const line of fs.readFileSync(p, 'utf8').split('\n')) {
+          const t = line.trim()
+          if (!t || t.startsWith('#')) continue
+          const eq = t.indexOf('=')
+          if (eq <= 0) continue
+          let v = t.slice(eq + 1).trim()
+          if (v.length >= 2 && ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'")))) {
+            v = v.slice(1, -1)
+          }
+          if (v) out[t.slice(0, eq).trim()] = v
+        }
+      }
+    } catch {
+      /* missing/unreadable env file — fall through */
+    }
+    cachedDotEnv = out
+    return out
+  }
+
+  function getTmdbApiKey(): string {
+    // Cache and watch API.txt mtime to avoid per-request sync read
+    try {
+      const stat = fs.existsSync(API_FILE) ? fs.statSync(API_FILE).mtimeMs : 0
+      if (cachedApiKey !== null && stat === cachedApiKeyMtime) return cachedApiKey
+      if (fs.existsSync(API_FILE)) {
+        const key = fs.readFileSync(API_FILE, 'utf8').trim()
+        if (key) {
+          cachedApiKey = key
+          cachedApiKeyMtime = stat
+          return key
+        }
+      }
+    } catch {
+      // fall through to env
+    }
+    const envKey = process.env.TMDB_KEY
+    if (envKey) {
+      cachedApiKey = envKey.trim()
+      return cachedApiKey
+    }
+    const fileEnvKey = readDotEnvFile().TMDB_KEY
+    if (fileEnvKey) {
+      cachedApiKey = fileEnvKey.trim()
+      return cachedApiKey
+    }
+    if (process.env.VITE_TMDB_KEY) {
+      // VITE_ vars are embedded in client bundle — warn and ignore
+      try {
+        console.warn('[cinetrack] VITE_TMDB_KEY is exposed to client — use TMDB_KEY instead')
+      } catch {}
+    }
+    // No fallback hardcoded key — fail explicitly
+    throw new Error('TMDb API key missing: create API.txt or set TMDB_KEY env')
+  }
+
+  function isAllowedTmdbPath(subpath: string): boolean {
+    // Reject raw traversal before URL normalization; normalization alone would
+    // turn /movie/../genre into an allowed /genre path.
+    if (subpath.includes('\\') || /(?:^|\/)(?:\.{1,2})(?:\/|$)/.test(subpath) || /%2e/i.test(subpath)) return false
+    let norm: string
+    try {
+      const u = new URL(subpath, 'http://localhost')
+      if (u.origin !== 'http://localhost') return false
+      norm = u.pathname
+    } catch {
+      norm = subpath.split('?')[0]
+    }
+    if (norm.includes('%') || norm.includes('//') || norm.includes('/./')) return false
+    return ALLOWED_TMDB_PREFIXES.some((prefix) => norm.startsWith(prefix))
+  }
+
+  /** Independent Host allowlist for middleware-owned routes. Vite's own
+   *  hostValidationMiddleware currently runs before plugin middleware, but
+   *  these routes must not depend on that ordering surviving future Vite
+   *  upgrades — this is the DNS-rebinding defense we control. */
+  function isLocalHostHeader(host: unknown): boolean {
+    if (typeof host !== 'string' || !host) return false
+    let u: URL
+    try {
+      u = new URL(`http://${host}`)
+    } catch {
+      return false
+    }
+    // A userinfo component means the parsed host is not what the header claims.
+    if (u.username || u.password) return false
+    const h = u.hostname.replace(/^\[|\]$/g, '').toLowerCase()
+    return h === 'localhost' || h.endsWith('.localhost') || h === '::1' || h === '0.0.0.0' || /^127(?:\.\d{1,3}){3}$/.test(h)
+  }
+
+  function sanitizeSubpath(subpath: string): string {
+    // Strip any injected api_key param to prevent duplication
+    try {
+      const u = new URL(subpath, TMDB_BASE)
+      u.searchParams.delete('api_key')
+      u.searchParams.delete('access_token')
+      u.searchParams.delete('session_id')
+      // Drop fragment entirely — TMDb doesn't use it
+      return u.pathname + (u.search ? u.search : '')
+    } catch {
+      return subpath
+    }
+  }
+
+  let sqlPromise: Promise<any> | null = null
+  const getSql = () => {
+    if (!sqlPromise) {
+      sqlPromise = import('sql.js')
+        .then((m) => (m.default as any)({ locateFile: () => WASM_PATH }))
+        .catch((e) => {
+          sqlPromise = null
+          throw e
+        })
+    }
+    return sqlPromise
+  }
+
+  async function openDb() {
+    const SQL = await getSql()
+    const dbExists = fs.existsSync(DB_PATH)
+    let buffer: Buffer | null = null
+    if (dbExists) {
+      const st = fs.statSync(DB_PATH)
+      // Bound what sql.js will parse — a runaway file must not OOM the server.
+      // Oversize fails loudly (500): it must NOT fall through to an empty
+      // handle, or the next write would persist empty over the real file.
+      if (st.size > 64 * 1024 * 1024) throw new Error('DB file too large')
+      try {
+        buffer = fs.readFileSync(DB_PATH)
+      } catch (e) {
+        throw new Error(`DB file unreadable: ${(e as Error).message}`)
+      }
+    }
+    let db: any
+    try {
+      db = buffer ? new SQL.Database(buffer) : new SQL.Database()
+    } catch (e) {
+      // Never move or replace a damaged database: keep the sole copy intact
+      // and fail the request so a later write cannot silently erase records.
+      throw new Error(`Database file is corrupt: ${(e as Error).message}`)
+    }
+    db.run(`
+      CREATE TABLE IF NOT EXISTS library (
+        key TEXT PRIMARY KEY,
+        media_type TEXT,
+        id INTEGER,
+        title TEXT,
+        year TEXT,
+        poster TEXT,
+        backdrop TEXT,
+        rating REAL,
+        status TEXT,
+        favorite INTEGER DEFAULT 0,
+        added_at INTEGER,
+        watched_at INTEGER,
+        runtime INTEGER,
+        total_episodes INTEGER,
+        episodes TEXT,
+        rewatches TEXT,
+        note TEXT,
+        json TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+    `)
+    // Keep older portable databases usable. CREATE TABLE IF NOT EXISTS does
+    // not add columns to an existing file, so migrate the small fixed schema
+    // before any handler prepares an INSERT.
+    const columns = (table: string) => {
+      const rows = db.exec(`PRAGMA table_info(${table})`)[0]?.values ?? []
+      return new Set(rows.map((row: unknown[]) => String(row[1])))
+    }
+    const libraryColumns = columns('library')
+    const libraryAdditions: [string, string][] = [
+      ['media_type', 'TEXT'],
+      ['id', 'INTEGER'],
+      ['title', 'TEXT'],
+      ['year', 'TEXT'],
+      ['poster', 'TEXT'],
+      ['backdrop', 'TEXT'],
+      ['rating', 'REAL'],
+      ['status', 'TEXT'],
+      ['favorite', 'INTEGER DEFAULT 0'],
+      ['added_at', 'INTEGER'],
+      ['watched_at', 'INTEGER'],
+      ['runtime', 'INTEGER'],
+      ['total_episodes', 'INTEGER'],
+      ['episodes', 'TEXT'],
+      ['rewatches', 'TEXT'],
+      ['note', 'TEXT'],
+      ['json', 'TEXT'],
+    ]
+    for (const [name, definition] of libraryAdditions) {
+      if (!libraryColumns.has(name)) db.run(`ALTER TABLE library ADD COLUMN ${name} ${definition}`)
+    }
+    const settingsColumns = columns('settings')
+    if (!settingsColumns.has('key')) db.run('ALTER TABLE settings ADD COLUMN key TEXT')
+    if (!settingsColumns.has('value')) db.run('ALTER TABLE settings ADD COLUMN value TEXT')
+    db.run('PRAGMA user_version = 1')
+    return db
+  }
+
+  function persist(db: any) {
+    const data = Buffer.from(db.export())
+    if (data.length > 64 * 1024 * 1024) throw new Error('Database file too large')
+    const dir = path.dirname(DB_PATH)
+    fs.mkdirSync(dir, { recursive: true })
+    const existed = fs.existsSync(DB_PATH)
+    const fd = fs.openSync(DB_PATH, existed ? 'r+' : 'w', 0o600)
+    try {
+      fs.fchmodSync(fd, 0o600)
+      let offset = 0
+      while (offset < data.length) {
+        const written = fs.writeSync(fd, data, offset, data.length - offset, offset)
+        if (written <= 0) throw new Error('Database write made no progress')
+        offset += written
+      }
+      fs.ftruncateSync(fd, data.length)
+      fs.fsyncSync(fd)
+    } finally {
+      fs.closeSync(fd)
+    }
+    if (!existed) {
+      try {
+        const dirFd = fs.openSync(dir, 'r')
+        try { fs.fsyncSync(dirFd) } finally { fs.closeSync(dirFd) }
+      } catch {}
+    }
+  }
+
+  async function readBodyWithLimit(req: import('node:http').IncomingMessage, limit: number): Promise<Buffer> {
+    const declared = Number(req.headers['content-length'] ?? 0)
+    if (Number.isFinite(declared) && declared > limit) {
+      req.destroy()
+      throw new Error('PAYLOAD_TOO_LARGE')
+    }
+    const chunks: Buffer[] = []
+    let size = 0
+    const timeout = setTimeout(() => {
+      try { req.destroy() } catch {}
+    }, 10000)
+    try {
+      for await (const chunk of req) {
+        const buf = chunk as Buffer
+        size += buf.length
+        if (size > limit) {
+          req.destroy()
+          throw new Error('PAYLOAD_TOO_LARGE')
+        }
+        chunks.push(buf)
+      }
+      return Buffer.concat(chunks)
+    } finally {
+      clearTimeout(timeout)
+    }
+  }
+
+  async function readResponseWithLimit(response: Response, limit: number): Promise<Buffer> {
+    const declared = Number(response.headers.get('content-length') ?? 0)
+    if (Number.isFinite(declared) && declared > limit) throw new Error('UPSTREAM_TOO_LARGE')
+    if (!response.body) {
+      const bytes = Buffer.from(await response.arrayBuffer())
+      if (bytes.length > limit) throw new Error('UPSTREAM_TOO_LARGE')
+      return bytes
+    }
+    const reader = response.body.getReader()
+    const chunks: Buffer[] = []
+    let size = 0
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        const chunk = Buffer.from(value)
+        size += chunk.length
+        if (size > limit) {
+          await reader.cancel()
+          throw new Error('UPSTREAM_TOO_LARGE')
+        }
+        chunks.push(chunk)
+      }
+      return Buffer.concat(chunks)
+    } finally {
+      reader.releaseLock()
+    }
+  }
+
+  /** TMDb GET + body with one retry for transport-level faults.
+   *  TMDb is CDN-fronted and a pooled connection can be reset mid-flight; without
+   *  a retry that blip surfaces to the app as a hard 502. These are idempotent
+   *  reads and the 24h cache absorbs the duplicate, so a second attempt is free.
+   *  A redirect is not retried — see `redirect: 'error'` below. */
+  async function fetchUpstream(targetUrl: string, key: string, isV4: boolean): Promise<{ res: Response; body: Buffer }> {
+    for (let attempt = 0; ; attempt++) {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 10000)
+      try {
+        const res = await fetch(targetUrl, {
+          headers: isV4 ? { Authorization: `Bearer ${key}` } : undefined,
+          signal: controller.signal,
+          // Never replay credentials to whatever host a redirect names. TMDb
+          // does not redirect these paths; if it ever does, fail loudly instead.
+          redirect: 'error',
+        })
+        return { res, body: await readResponseWithLimit(res, 1024 * 1024) }
+      } catch (err) {
+        const e = err as Error
+        // Our own deadline and an oversize body are not transient — only a
+        // socket/DNS/TLS fault is worth exactly one more try.
+        if (attempt > 0 || e.name === 'AbortError' || e.message === 'UPSTREAM_TOO_LARGE') throw err
+      } finally {
+        clearTimeout(timeout)
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+  }
+
+  // LRU helpers for tmdbCache with both count and byte bounds.
+  function evictIfNeeded(cache: Map<string, any>) {
+    const now = Date.now()
+    for (const [k, v] of cache) if (v.expires < now) cache.delete(k)
+    let bytes = 0
+    for (const v of cache.values()) bytes += Buffer.byteLength(v.body)
+    while (cache.size > MAX_CACHE_ENTRIES || bytes > MAX_CACHE_BYTES) {
+      const first = cache.keys().next().value as string | undefined
+      if (!first) break
+      const value = cache.get(first)
+      cache.delete(first)
+      bytes -= value ? Buffer.byteLength(value.body) : 0
+    }
+  }
+
+  // Rate limiter for TMDb proxy — 40 req per 10s per IP to avoid IP ban
+  const tmdbRateMap = new Map<string, number[]>()
+  function isTmdbRateLimited(ip: string): boolean {
+    const now = Date.now()
+    const windowMs = 10000
+    const max = 40
+    const arr = tmdbRateMap.get(ip) || []
+    const recent = arr.filter((t) => now - t < windowMs)
+    if (recent.length >= max) {
+      tmdbRateMap.set(ip, recent)
+      return true
+    }
+    recent.push(now)
+    tmdbRateMap.set(ip, recent)
+    if (tmdbRateMap.size > 100) {
+      for (const [k, v] of tmdbRateMap) if (v.every((t) => now - t > windowMs)) tmdbRateMap.delete(k)
+    }
+    return false
+  }
+
+  let writeChain: Promise<void> = Promise.resolve()
+  function queueWrite<T>(fn: () => Promise<T>): Promise<T> {
+    const p = writeChain.then(fn) as Promise<T>
+    // Keep chain alive even if fn rejects
+    writeChain = (p as Promise<unknown>).catch(() => {}) as Promise<void>
+    return p
+  }
+
+  // Shared attachment for dev and preview — both use data/database.sqlite.
+  // Preview is strict: headerless non-browser clients are rejected there,
+  // while dev still allows local curl debugging.
+  async function attachHandlers(
+    server: { config: { logger: { warn: (m: string) => void } }; middlewares: { use: (fn: any) => void } },
+    strictOriginChecks = false,
+  ) {
+    try {
+      const initDb = await openDb()
+      // Avoid rewriting a healthy database on every server start. A new
+      // empty database is still created at the canonical path immediately.
+      if (!fs.existsSync(DB_PATH)) persist(initDb)
+      initDb.close()
+    } catch (e) {
+      server.config.logger.warn(`[cinetrack-sqlite] DB init: ${(e as Error).message}`)
+    }
+
+      const tmdbCache = new Map<string, { status: number; contentType: string; body: string; expires: number }>()
+
+      server.middlewares.use(async (req: any, res: any, next: any) => {
+        const rawUrl = req.url || ''
+        // Use URL to normalize pathname and guard against /api/tmdb-evil
+        let pathname = ''
+        try {
+          const u = new URL(rawUrl, 'http://localhost')
+          pathname = u.pathname
+        } catch {
+          pathname = rawUrl.split('?')[0]
+        }
+
+        // Block direct access to sensitive files (case-insensitive: macOS fs is too)
+        let decodedPath = pathname
+        try { decodedPath = decodeURIComponent(pathname) } catch { decodedPath = pathname }
+        const lowerPath = decodedPath.toLowerCase()
+        const remoteAddress = (req.socket as unknown as { remoteAddress?: string })?.remoteAddress ?? ''
+        const isLoopback = remoteAddress === '::1' || remoteAddress === '127.0.0.1' || remoteAddress === '0.0.0.0' || remoteAddress.startsWith('::ffff:127.')
+        if (!isLoopback && (pathname.startsWith('/api/tmdb') || pathname.startsWith('/__data/'))) {
+          res.statusCode = 403
+          res.end()
+          return
+        }
+
+        // Middleware-owned JSON routes: hardening headers are set here because
+        // Vite applies server.headers later in the pipeline and they never
+        // reach these responses. The Host allowlist is a DNS-rebinding layer
+        // independent of Vite's middleware ordering.
+        const isSensitivePath = pathname === '/api/tmdb' || pathname.startsWith('/api/tmdb/') || pathname.startsWith('/__data/')
+        if (isSensitivePath) {
+          res.setHeader('X-Content-Type-Options', 'nosniff')
+          res.setHeader('Referrer-Policy', 'no-referrer')
+          res.setHeader('Cross-Origin-Resource-Policy', 'same-origin')
+          if (!isLocalHostHeader(req.headers.host)) {
+            res.statusCode = 403
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: 'Forbidden host' }))
+            return
+          }
+        }
+        if (lowerPath === '/api.txt' || lowerPath === '/vite.config.ts' || lowerPath.startsWith('/data/') || lowerPath === '/data') {
+          res.statusCode = 404
+          res.end()
+          return
+        }
+        // Block Vite internal fs exposure
+        if (pathname.startsWith('/@fs/')) {
+          res.statusCode = 403
+          res.end()
+          return
+        }
+
+        // Same-origin gate shared by /__data/* and /api/tmdb (CSRF protection).
+        // Browsers always send Origin or Sec-Fetch-Site; headerless clients
+        // (curl) are allowed in dev only — preview mode is strict.
+        const checkSameOrigin = (): boolean => {
+          const origin = req.headers.origin as string | undefined
+          const host = req.headers.host as string | undefined
+          const secFetchSite = req.headers['sec-fetch-site'] as string | undefined
+          if (origin && host) {
+            try {
+              return new URL(origin).host === host
+            } catch {
+              return false
+            }
+          }
+          if (secFetchSite) return secFetchSite === 'same-origin'
+          // Headerless fallback: dev-mode non-browser tools (curl) may still
+          // read, but state-changing requests must carry same-origin evidence.
+          // This closes CSRF writes from browsers old enough to send neither
+          // Origin on POST nor Sec-Fetch-Site; preview stays strict throughout.
+          const method = (req.method || 'GET').toUpperCase()
+          return !strictOriginChecks && (method === 'GET' || method === 'HEAD')
+        }
+
+        // Enforce same-origin for __data endpoints (CSRF protection).
+        // Cross-site reads must not be able to inspect private collection data.
+        const isDataEndpoint = pathname.startsWith('/__data/')
+        if (isDataEndpoint) {
+          if (!checkSameOrigin()) {
+            res.statusCode = 403
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: 'Forbidden origin' }))
+            return
+          }
+        }
+
+        // 1. Proxy TMDb requests securely with allowlist, sanitization, timeout, bounded cache
+        if (pathname === '/api/tmdb' || pathname.startsWith('/api/tmdb/')) {
+          if (req.method !== 'GET' && req.method !== 'HEAD') {
+            res.statusCode = 405
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: 'Method not allowed' }))
+            return
+          }
+          if (!checkSameOrigin()) {
+            res.statusCode = 403
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: 'Forbidden origin' }))
+            return
+          }
+          try {
+            const subpathRaw = rawUrl.slice('/api/tmdb'.length) || '/'
+            if (!isAllowedTmdbPath(subpathRaw)) {
+              res.statusCode = 403
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'TMDb endpoint not allowed' }))
+              return
+            }
+            if (subpathRaw.length > 800) {
+              res.statusCode = 414
+              res.end(JSON.stringify({ error: 'URI too long' }))
+              return
+            }
+            const subpath = sanitizeSubpath(subpathRaw)
+            // Allowlist query keys server-side too — the client allowlist is
+            // bypassable with a direct fetch to the proxy.
+            try {
+              const qu = new URL(TMDB_BASE + subpath)
+              for (const k of qu.searchParams.keys()) {
+                const v = qu.searchParams.get(k) ?? ''
+                if (!ALLOWED_TMDB_QUERY_KEYS.has(k) || v.length > 500) {
+                  res.statusCode = 403
+                  res.setHeader('Content-Type', 'application/json')
+                  res.end(JSON.stringify({ error: 'Query parameter not allowed' }))
+                  return
+                }
+              }
+            } catch {
+              res.statusCode = 400
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Bad request' }))
+              return
+            }
+            const cached = tmdbCache.get(subpath)
+            if (cached && cached.expires > Date.now()) {
+              tmdbCache.delete(subpath)
+              tmdbCache.set(subpath, cached)
+              res.statusCode = cached.status
+              res.setHeader('Content-Type', cached.contentType)
+              res.setHeader('X-Cache', 'HIT')
+              res.setHeader('Cache-Control', 'public, max-age=60')
+              if (req.method === 'HEAD') {
+                res.setHeader('Content-Length', String(Buffer.byteLength(cached.body)))
+                res.end()
+              } else {
+                res.end(cached.body)
+              }
+              return
+            }
+            if (cached && cached.expires <= Date.now()) tmdbCache.delete(subpath)
+
+            // Rate limit only what actually reaches TMDb — a cache HIT above is
+            // free, and charging it let a burst of repeats 429 on data the
+            // server already had. Socket IP only (X-Forwarded-For is spoofable).
+            const ip = (req.socket as unknown as { remoteAddress?: string })?.remoteAddress || 'local'
+            if (isTmdbRateLimited(ip)) {
+              res.statusCode = 429
+              res.setHeader('Content-Type', 'application/json')
+              res.setHeader('Retry-After', '10')
+              res.end(JSON.stringify({ error: 'Too many requests — please retry after 10s' }))
+              return
+            }
+
+            let key: string
+            try {
+              key = getTmdbApiKey()
+            } catch {
+              res.statusCode = 503
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Service unavailable' }))
+              return
+            }
+            const isV4 = key.startsWith('eyJ') && key.split('.').length === 3
+            // Build target via URL to avoid double api_key and handle encoding — TMDB_BASE is https://api.themoviedb.org/3
+            let targetUrl: string
+            try {
+              const u = new URL(TMDB_BASE + subpath)
+              if (!isV4) u.searchParams.set('api_key', key)
+              targetUrl = u.toString()
+            } catch {
+              targetUrl = isV4 ? `${TMDB_BASE}${subpath}` : `${TMDB_BASE}${subpath}${subpath.includes('?') ? '&' : '?'}api_key=${encodeURIComponent(key)}`
+            }
+
+            const { res: upstreamRes, body: bodyBytes } = await fetchUpstream(targetUrl, key, isV4)
+
+            const status = upstreamRes.status
+            const rawContentType = upstreamRes.headers.get('content-type') || 'application/json'
+            if (!rawContentType.toLowerCase().includes('application/json')) {
+              res.statusCode = 502
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'TMDb returned an unexpected content type' }))
+              return
+            }
+            const contentType = 'application/json'
+            // Bound upstream bodies to 1MB by bytes (not UTF-16 length), with a
+            // content-length pre-check — larger payloads are rejected, never
+            // truncated-and-cached (a truncated body would poison the cache).
+            const body = bodyBytes.toString('utf8')
+
+            if (req.method !== 'HEAD' && upstreamRes.ok && contentType === 'application/json' && status === 200) {
+              tmdbCache.set(subpath, { status, contentType, body, expires: Date.now() + CACHE_TTL_MS })
+              evictIfNeeded(tmdbCache)
+            }
+
+            res.statusCode = status
+            res.setHeader('Content-Type', contentType)
+            res.setHeader('X-Cache', 'MISS')
+            res.setHeader('Cache-Control', status === 200 ? 'public, max-age=60' : 'no-store')
+            if (req.method === 'HEAD') {
+              res.setHeader('Content-Length', String(Buffer.byteLength(body)))
+              res.end()
+            } else {
+              res.end(body)
+            }
+            return
+          } catch (err) {
+            const isAbort = (err as Error).name === 'AbortError'
+            const tooLarge = (err as Error).message === 'UPSTREAM_TOO_LARGE'
+            // Keep the socket-level cause in the log — "fetch failed" alone is
+            // what made this undiagnosable from the terminal.
+            const code = (err as { cause?: { code?: string } }).cause?.code
+            server.config.logger.warn(
+              `[cinetrack-tmdb-proxy] ${isAbort ? 'timeout' : `${(err as Error).name}: ${(err as Error).message}${code ? ` (${code})` : ''}`}`,
+            )
+            res.statusCode = isAbort ? 504 : 502
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: isAbort ? 'TMDb upstream timeout' : tooLarge ? 'Upstream response too large' : 'Failed to contact TMDb upstream' }))
+            return
+          }
+        }
+
+        // 2. Library endpoints
+        if (pathname === '/__data/library') {
+          try {
+            if (req.method === 'GET') {
+              const db = await openDb()
+              try {
+                const out: Record<string, unknown> = {}
+                let responseBytes = 2
+                const stmt = db.prepare('SELECT key, json FROM library')
+                try {
+                  while (stmt.step()) {
+                    const [key, json] = stmt.get() as [string, string]
+                    try {
+                      // Validate key shape to prevent prototype pollution
+                      if (!isSafeDbKey(key)) continue
+                      const parsed = JSON.parse(json)
+                      const encoded = JSON.stringify(parsed)
+                      const size = Buffer.byteLength(encoded) + Buffer.byteLength(key) + 4
+                      if (size > MAX_BODY_BYTES || responseBytes + size > MAX_BODY_BYTES) {
+                        res.statusCode = 413
+                        res.setHeader('Content-Type', 'application/json')
+                        res.end(JSON.stringify({ error: 'Library is too large to load in one request.' }))
+                        return
+                      }
+                      out[key] = parsed
+                      responseBytes += size
+                    } catch {
+                      /* skip malformed */
+                    }
+                  }
+                } finally {
+                  stmt.free()
+                }
+                res.setHeader('Content-Type', 'application/json')
+                res.setHeader('Cache-Control', 'no-store')
+                res.end(JSON.stringify(out))
+                return
+              } finally {
+                db.close()
+              }
+            }
+
+            if (req.method === 'POST') {
+              const buf = await readBodyWithLimit(req, MAX_BODY_BYTES).catch((e) => {
+                if ((e as Error).message === 'PAYLOAD_TOO_LARGE') throw e
+                throw e
+              })
+              let payload: unknown
+              try {
+                payload = JSON.parse(buf.toString('utf8') || '{}')
+              } catch {
+                res.statusCode = 400
+                res.setHeader('Content-Type', 'application/json')
+                res.end(JSON.stringify({ error: 'Invalid JSON' }))
+                return
+              }
+              if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+                res.statusCode = 400
+                res.end(JSON.stringify({ error: 'Expected object' }))
+                return
+              }
+              let clearLibrary = false
+              let map = payload as Record<string, any>
+              if (Object.prototype.hasOwnProperty.call(map, 'changes')) {
+                const envelope = map
+                if (typeof envelope.changes !== 'object' || envelope.changes === null || Array.isArray(envelope.changes)) {
+                  res.statusCode = 400
+                  res.end(JSON.stringify({ error: 'Expected changes object' }))
+                  return
+                }
+                clearLibrary = envelope.clear === true
+                map = envelope.changes as Record<string, any>
+              }
+              if (Object.keys(map).length > 5000) {
+                res.statusCode = 413
+                res.end(JSON.stringify({ error: 'Too many entries' }))
+                return
+              }
+
+              await queueWrite(async () => {
+                const db = await openDb()
+                try {
+                  db.run('BEGIN IMMEDIATE')
+                  if (clearLibrary) db.run('DELETE FROM library')
+                  const upsert = db.prepare(`
+                    INSERT OR REPLACE INTO library (
+                      key, media_type, id, title, year, poster, backdrop, rating,
+                      status, favorite, added_at, watched_at, runtime, total_episodes,
+                      episodes, rewatches, note, json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  `)
+                  const remove = db.prepare('DELETE FROM library WHERE key = ?')
+                  const readPrevious = db.prepare('SELECT json FROM library WHERE key = ?')
+                  for (const [key, val] of Object.entries(map)) {
+                    if (!isSafeDbKey(key)) continue
+                    if (val === null) {
+                      remove.run([key])
+                      continue
+                    }
+                    if (!val || typeof val !== 'object') continue
+                    const [mediaType, rawId] = key.split(':') as ['movie' | 'tv', string]
+                    const id = Number(rawId)
+                    if (val.mediaType !== mediaType || val.id !== id) continue
+                    const episodes: Record<string, number> = {}
+                    const rewatchEpisodes: Record<string, number> = {}
+                    let acceptedEpisodes = 0
+                    if (val.episodes && typeof val.episodes === 'object' && !Array.isArray(val.episodes)) {
+                      for (const [episodeKey, stamp] of Object.entries(val.episodes as Record<string, unknown>)) {
+                        if (acceptedEpisodes >= 20000) break
+                        if (/^\d+-\d+$/.test(episodeKey) && isValidTimestamp(stamp)) episodes[episodeKey] = stamp
+                        if (Object.prototype.hasOwnProperty.call(episodes, episodeKey)) acceptedEpisodes++
+                      }
+                    }
+                    let acceptedRewatchEpisodes = 0
+                    if (mediaType === 'tv' && val.rewatchEpisodes && typeof val.rewatchEpisodes === 'object' && !Array.isArray(val.rewatchEpisodes)) {
+                      for (const [episodeKey, stamp] of Object.entries(val.rewatchEpisodes as Record<string, unknown>)) {
+                        if (acceptedRewatchEpisodes >= 20000) break
+                        if (/^\d+-\d+$/.test(episodeKey) && isValidTimestamp(stamp)) rewatchEpisodes[episodeKey] = stamp
+                        if (Object.prototype.hasOwnProperty.call(rewatchEpisodes, episodeKey)) acceptedRewatchEpisodes++
+                      }
+                    }
+                    const rewatches = Array.isArray(val.rewatches) ? val.rewatches.filter(isValidTimestamp).slice(-500) : []
+                    const addedAt = isValidTimestamp(val.addedAt) ? val.addedAt : Date.now()
+                    const watchedAt = isValidTimestamp(val.watchedAt) ? val.watchedAt : null
+                    const normalized = {
+                      id,
+                      mediaType,
+                      title: typeof val.title === 'string' && val.title ? val.title.slice(0, 200) : 'Untitled',
+                      year: typeof val.year === 'string' ? val.year.slice(0, 4) : '',
+                      poster: typeof val.poster === 'string' && val.poster.length <= 500 && /^\/[A-Za-z0-9/_\-.]+$/.test(val.poster) && !val.poster.includes('..') ? val.poster : null,
+                      customPoster: isSafeCustomPoster(val.customPoster) ? val.customPoster : null,
+                      backdrop: typeof val.backdrop === 'string' && val.backdrop.length <= 500 && /^\/[A-Za-z0-9/_\-.]+$/.test(val.backdrop) && !val.backdrop.includes('..') ? val.backdrop : null,
+                      rating: typeof val.rating === 'number' && Number.isInteger(val.rating) && val.rating >= 1 && val.rating <= 10 ? val.rating : null,
+                      status: mediaType === 'movie' && val.status === 'dropped'
+                        ? 'planned'
+                        : ['planned', 'watching', 'watched', 'dropped'].includes(val.status) ? val.status : 'planned',
+                      rewatching: mediaType === 'tv' && val.status === 'watched' && val.rewatching === true,
+                      favorite: val.favorite === true,
+                      addedAt,
+                      watchedAt,
+                      runtime: typeof val.runtime === 'number' && Number.isFinite(val.runtime) ? Math.min(600, Math.max(0, Math.floor(val.runtime))) : null,
+                      totalEpisodes: typeof val.totalEpisodes === 'number' && Number.isFinite(val.totalEpisodes) ? Math.min(10000, Math.max(0, Math.floor(val.totalEpisodes))) : null,
+                      episodes,
+                      rewatchEpisodes,
+                      rewatches,
+                      ...(typeof val.note === 'string' ? { note: val.note.slice(0, 2000) } : {}),
+                    }
+                    if (normalized.status === 'dropped') {
+                      let previous: Record<string, unknown> | null = null
+                      let previousExists = false
+                      readPrevious.bind([key])
+                      if (readPrevious.step()) {
+                        previousExists = true
+                        try {
+                          const row = readPrevious.get() as [string]
+                          const parsed: unknown = JSON.parse(row[0])
+                          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                            previous = parsed as Record<string, unknown>
+                          }
+                        } catch {
+                          // Treat unreadable legacy rows as an invalid transition.
+                        }
+                      }
+                      readPrevious.reset()
+                      const priorEpisodes = previous?.episodes
+                      const priorHasProgress = priorEpisodes && typeof priorEpisodes === 'object' && !Array.isArray(priorEpisodes)
+                        && Object.entries(priorEpisodes).some(([episodeKey, stamp]) => /^\d+-\d+$/.test(episodeKey) && isValidTimestamp(stamp))
+                      const alreadyDropped = previous?.mediaType === 'tv' && previous.status === 'dropped'
+                      const validTransition = previous?.mediaType === 'tv' && previous.status === 'watching' && priorHasProgress
+                      const importedHistory = !previousExists && Object.keys(episodes).length > 0
+                      if (mediaType !== 'tv' || (!alreadyDropped && !validTransition && !importedHistory) || Object.keys(episodes).length === 0) {
+                        const error = new Error('Dropped status requires a show with recorded episode progress that is already being watched.')
+                        Object.assign(error, { statusCode: 400 })
+                        throw error
+                      }
+                    }
+                    upsert.run([
+                      key,
+                      normalized.mediaType,
+                      normalized.id,
+                      normalized.title,
+                      normalized.year,
+                      normalized.poster,
+                      normalized.backdrop,
+                      normalized.rating,
+                      normalized.status,
+                      normalized.favorite ? 1 : 0,
+                      normalized.addedAt,
+                      normalized.watchedAt,
+                      normalized.runtime,
+                      normalized.totalEpisodes,
+                      JSON.stringify(normalized.episodes),
+                      JSON.stringify(normalized.rewatches),
+                      normalized.note ?? null,
+                      JSON.stringify(normalized),
+                    ])
+                  }
+                  upsert.free()
+                  remove.free()
+                  readPrevious.free()
+                  db.run('COMMIT')
+                  persist(db)
+                } catch (e) {
+                  try {
+                    db.run('ROLLBACK')
+                  } catch {}
+                  throw e
+                } finally {
+                  db.close()
+                }
+              })
+
+              res.statusCode = 204
+              res.end()
+              return
+            }
+
+            res.statusCode = 405
+            res.end()
+            return
+          } catch (err) {
+            if ((err as Error & { statusCode?: number }).statusCode === 400) {
+              res.statusCode = 400
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: (err as Error).message }))
+              return
+            }
+            if ((err as Error).message === 'PAYLOAD_TOO_LARGE') {
+              res.statusCode = 413
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Payload too large' }))
+              return
+            }
+            server.config.logger.warn(`[cinetrack-sqlite] library: ${(err as Error).message}`)
+            res.statusCode = 500
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: 'Internal error' }))
+            return
+          }
+        }
+
+        // 3. Settings endpoints
+        if (pathname === '/__data/settings') {
+          try {
+            if (req.method === 'GET') {
+              const db = await openDb()
+              try {
+                const out: Record<string, any> = {}
+                let responseBytes = 2
+                const stmt = db.prepare('SELECT key, value FROM settings')
+                try {
+                  while (stmt.step()) {
+                    const [k, v] = stmt.get() as [string, string]
+                    try {
+                      if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue
+                      const parsed = JSON.parse(v)
+                      const encoded = JSON.stringify(parsed)
+                      const size = Buffer.byteLength(encoded) + Buffer.byteLength(k) + 4
+                      if (size > MAX_BODY_BYTES_SETTINGS || responseBytes + size > MAX_BODY_BYTES_SETTINGS) continue
+                      out[k] = parsed
+                      responseBytes += size
+                    } catch {
+                      if (responseBytes + v.length + k.length + 4 <= MAX_BODY_BYTES_SETTINGS) {
+                        out[k] = v
+                        responseBytes += v.length + k.length + 4
+                      }
+                    }
+                  }
+                } finally {
+                  stmt.free()
+                }
+                res.setHeader('Content-Type', 'application/json')
+                res.setHeader('Cache-Control', 'no-store')
+                res.end(JSON.stringify(out))
+                return
+              } finally {
+                db.close()
+              }
+            }
+
+            if (req.method === 'POST') {
+              const buf = await readBodyWithLimit(req, MAX_BODY_BYTES_SETTINGS)
+              let settingsMap: Record<string, any>
+              try {
+                settingsMap = JSON.parse(buf.toString('utf8') || '{}') as Record<string, any>
+              } catch {
+                res.statusCode = 400
+                res.end(JSON.stringify({ error: 'Invalid JSON' }))
+                return
+              }
+              if (typeof settingsMap !== 'object' || settingsMap === null || Array.isArray(settingsMap)) {
+                res.statusCode = 400
+                res.end(JSON.stringify({ error: 'Expected object' }))
+                return
+              }
+
+              await queueWrite(async () => {
+                const db = await openDb()
+                try {
+                  db.run('BEGIN IMMEDIATE')
+                  const stmt = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
+                  for (const [k, v] of Object.entries(settingsMap)) {
+                    if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue
+                    if (typeof k !== 'string' || k.length > 100) continue
+                    const serialized = JSON.stringify(v)
+                    if (serialized.length > 10000) continue
+                    stmt.run([k, serialized])
+                  }
+                  stmt.free()
+                  db.run('COMMIT')
+                  persist(db)
+                } catch (e) {
+                  try {
+                    db.run('ROLLBACK')
+                  } catch {}
+                  throw e
+                } finally {
+                  db.close()
+                }
+              })
+              res.statusCode = 204
+              res.end()
+              return
+            }
+
+            res.statusCode = 405
+            res.end()
+            return
+          } catch (err) {
+            if ((err as Error).message === 'PAYLOAD_TOO_LARGE') {
+              res.statusCode = 413
+              res.end(JSON.stringify({ error: 'Payload too large' }))
+              return
+            }
+            server.config.logger.warn(`[cinetrack-sqlite] settings: ${(err as Error).message}`)
+            res.statusCode = 500
+            res.end(JSON.stringify({ error: 'Internal error' }))
+            return
+          }
+        }
+
+        return next()
+      })
+  }
+
+  return {
+    name: 'cinetrack-sqlite-persistence',
+    async configureServer(server) {
+      await attachHandlers(server)
+    },
+    async configurePreviewServer(server) {
+      await attachHandlers(
+        server as unknown as { config: { logger: { warn: (m: string) => void } }; middlewares: { use: (fn: any) => void } },
+        true,
+      )
+    },
+  }
+}

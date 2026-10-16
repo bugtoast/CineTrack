@@ -1,0 +1,982 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  discover,
+  genreList,
+  recommendations,
+  searchMulti,
+  trending,
+  type MediaType,
+  type Page,
+  type TmdbTitle,
+} from '../lib/tmdb'
+import { useLibrary } from '../lib/library'
+import { useSettings } from '../lib/settings'
+import { Chip, Empty, Poster, PosterGrid, PosterSkeleton, SearchInput, SectionHead, Spinner } from './ui'
+
+type Mode = 'suggested' | 'trending' | 'movie' | 'tv'
+
+const SORTS = [
+  { id: 'popularity.desc', label: 'Popular' },
+  { id: 'vote_average.desc', label: 'Top rated' },
+  { id: 'primary_release_date.desc', label: 'Newest' },
+  { id: 'revenue.desc', label: 'Highest grossing' },
+]
+
+/**
+ * One For You shelf — a single category of suggestions. `items` is the pool the
+ * shelf deals from; `load` pulls a further TMDb page for the same category when
+ * the shelf is shuffled, so a press can surface titles the pool never held.
+ */
+type Shelf = {
+  key: string
+  title: string
+  note?: string
+  items: TmdbTitle[]
+  load: (page: number, signal?: AbortSignal) => Promise<TmdbTitle[]>
+}
+
+/** Plates per shelf: two stacked rows of the configured width. */
+const SHELF_ROWS = 2
+/** Candidates kept per shelf — deeper than one hand so shuffling has room. */
+const SHELF_POOL = 24
+/** Ceiling for the runtime pool once shuffles start appending fresh pages. */
+const SHELF_POOL_CAP = SHELF_POOL * 3
+/** Share of a hand drawn from the newest batch; the rest revisits the pool. */
+const FRESH_SHARE = 2 / 3
+const MAX_GRID_RESULTS = 300
+const MAX_CACHED_FEEDS = 6
+
+type FeedSnapshot = { results: TmdbTitle[]; page: number; totalPages: number }
+
+/** Plate identity — media type falls back the same way Poster infers it. */
+export const plateKey = (t: TmdbTitle) => `${t.media_type ?? (t.title ? 'movie' : 'tv')}-${t.id}`
+
+function uniqueTitles(items: TmdbTitle[]) {
+  const seen = new Set<string>()
+  return items.filter((item) => {
+    const key = plateKey(item)
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function gridColumnsForViewport(configured: number) {
+  if (typeof window === 'undefined') return 2
+  if (window.innerWidth >= 1024) return configured
+  if (window.innerWidth >= 768) return 4
+  if (window.innerWidth >= 640) return 3
+  return 2
+}
+
+/** Keep brief requests from flashing a full row of skeletons. */
+function useDelayedLoading(active: boolean, requestKey: string, delayMs = 140) {
+  const [visibleKey, setVisibleKey] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!active) {
+      setVisibleKey(null)
+      return
+    }
+    setVisibleKey(null)
+    const timer = window.setTimeout(() => setVisibleKey(requestKey), delayMs)
+    return () => window.clearTimeout(timer)
+  }, [active, requestKey, delayMs])
+
+  return active && visibleKey === requestKey
+}
+
+/** Deterministic spread pick of genres so shelves vary by library but stay stable per session. */
+function hashStr(s: string): number {
+  let h = 2166136261
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return h >>> 0
+}
+
+function pickGenres(genres: { id: number; name: string }[], sig: string, n: number) {
+  if (genres.length === 0) return []
+  const out: { id: number; name: string }[] = []
+  const used = new Set<number>()
+  const start = hashStr(sig || 'cinetrack') % genres.length
+  for (let k = 0; k < genres.length && out.length < n; k++) {
+    const g = genres[(start + k * 7) % genres.length]
+    if (used.has(g.id)) continue
+    used.add(g.id)
+    out.push(g)
+  }
+  return out
+}
+
+/** xorshift32 — a few lines of determinism so a dealt hand survives re-renders. */
+function seedRandom(seed: number): () => number {
+  let s = (seed >>> 0) || 0x9e3779b9
+  return () => {
+    s ^= s << 13
+    s >>>= 0
+    s ^= s >>> 17
+    s ^= s << 5
+    s >>>= 0
+    return s / 0x100000000
+  }
+}
+
+/** Seeded Fisher–Yates: one seed always deals the same order. */
+export function shuffleWithSeed<T>(list: T[], seed: number): T[] {
+  const out = [...list]
+  const rand = seedRandom(seed)
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1))
+    ;[out[i], out[j]] = [out[j], out[i]]
+  }
+  return out
+}
+
+/**
+ * Deals one shelf hand: at most `slots` plates, two thirds of them from the
+ * batch the last shuffle pulled so the row visibly turns over, the rest from
+ * the wider pool. A title never repeats inside a hand.
+ */
+export function dealSuggestions(fresh: TmdbTitle[], pool: TmdbTitle[], slots: number, seed: number): TmdbTitle[] {
+  const hand: TmdbTitle[] = []
+  const used = new Set<string>()
+  const draw = (list: TmdbTitle[], limit: number) => {
+    for (const item of list) {
+      if (hand.length >= slots || limit <= 0) return
+      const id = plateKey(item)
+      if (used.has(id)) continue
+      used.add(id)
+      hand.push(item)
+      limit -= 1
+    }
+  }
+  draw(shuffleWithSeed(fresh, seed), Math.ceil(slots * FRESH_SHARE))
+  draw(shuffleWithSeed(pool, seed + 1), slots)
+  return hand
+}
+
+/** Plates currently on screen in every mounted shelf, so a shuffle can steer around them. */
+type ClaimRegistry = { current: Map<string, Set<string>> }
+
+/** One category shelf: two fixed rows of plates with a shuffle control in the header. */
+function ShelfRow({
+  shelf,
+  claims,
+  onOpen,
+}: {
+  shelf: Shelf
+  claims: ClaimRegistry
+  onOpen: (t: MediaType, id: number, seed?: TmdbTitle) => void
+}) {
+  const { get } = useLibrary()
+  const { settings } = useSettings()
+  const columns = Math.max(1, settings.shelfColumns)
+  const slots = columns * SHELF_ROWS
+
+  const [pool, setPool] = useState(shelf.items)
+  const [fresh, setFresh] = useState<TmdbTitle[]>([])
+  // A new mount gets a fresh hand; each shuffle advances the seed once.
+  const [seed, setSeed] = useState(() => Math.floor(Math.random() * 0x1_0000_0000))
+  const [hand, setHand] = useState(() => dealSuggestions([], shelf.items, slots, seed))
+  const [busy, setBusy] = useState(false)
+  const [refreshError, setRefreshError] = useState<string | null>(null)
+  // Every shelf is assembled from page one, so refreshes walk forward from there.
+  const pageRef = useRef(1)
+  const busyRef = useRef(false)
+  const requestRef = useRef<AbortController | null>(null)
+
+  const visible = useMemo(
+    () => hand.length === slots ? hand : dealSuggestions(fresh, pool, slots, seed),
+    [fresh, hand, pool, seed, slots],
+  )
+  const previousVisible = useRef(new Set<string>())
+
+  // Publish this shelf's plates so a sibling shuffle never repeats one of them.
+  useEffect(() => {
+    const keys = new Set(visible.map(plateKey))
+    claims.current.set(shelf.key, keys)
+    previousVisible.current = keys
+    return () => {
+      claims.current.delete(shelf.key)
+    }
+  }, [claims, shelf.key, visible])
+
+  useEffect(() => () => requestRef.current?.abort(), [])
+
+  /** Pulls the next page for this category; a failed pull leaves the hand intact. */
+  const refresh = useCallback(async () => {
+    if (busyRef.current) return
+    busyRef.current = true
+    setBusy(true)
+    const controller = new AbortController()
+    requestRef.current = controller
+    try {
+      const page = pageRef.current + 1
+      const items = await shelf.load(page, controller.signal)
+      if (controller.signal.aborted || items.length === 0) return
+      setRefreshError(null)
+      pageRef.current = page
+      const elsewhere = new Set<string>()
+      for (const [otherKey, plates] of claims.current) {
+        if (otherKey === shelf.key) continue
+        for (const plate of plates) elsewhere.add(plate)
+      }
+      const picked = items.filter((item) => !elsewhere.has(plateKey(item)))
+      if (picked.length === 0) return
+      setFresh(picked)
+      setPool((prev) => {
+        const held = new Set(prev.map(plateKey))
+        return [...picked.filter((item) => !held.has(plateKey(item))), ...prev].slice(0, SHELF_POOL_CAP)
+      })
+    } catch {
+      if (!controller.signal.aborted) setRefreshError('Could not refresh this shelf. Check your connection and retry.')
+    } finally {
+      busyRef.current = false
+      setBusy(false)
+    }
+  }, [claims, shelf])
+
+  const shuffle = () => {
+    if (busyRef.current) return
+    const nextSeed = seed + 1
+    setSeed(nextSeed)
+    setHand(dealSuggestions(fresh, pool, slots, nextSeed))
+    void refresh()
+  }
+
+  return (
+    <section aria-label={shelf.title} aria-busy={busy}>
+      <div className="mb-4 flex items-end justify-between gap-4 border-b border-border pb-2">
+        <div className="min-w-0">
+          <h3 className="font-display truncate text-[22px]">{shelf.title}</h3>
+          {shelf.note && <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{shelf.note}</p>}
+        </div>
+        <button
+          type="button"
+          onClick={shuffle}
+          disabled={busy}
+          aria-label={`Shuffle ${shelf.title} suggestions`}
+          className="press inline-flex shrink-0 items-center gap-1.5 border border-border px-3 py-1.5 font-sans text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground disabled:cursor-wait disabled:opacity-60"
+        >
+          <span aria-hidden className={`inline-block text-[13px] leading-none ${busy ? 'animate-spin' : ''}`}>
+            ↻
+          </span>{' '}
+          Shuffle
+        </button>
+      </div>
+      {refreshError && (
+        <div role="alert" className="mb-3 flex items-center justify-between gap-3 border border-[var(--primary)]/20 bg-[var(--primary)]/5 px-3 py-2">
+          <p className="font-sans text-[12px] text-[var(--primary)]">{refreshError}</p>
+          <button type="button" disabled={busy} onClick={() => void refresh()} className="press shrink-0 font-sans text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--primary)] underline underline-offset-4 disabled:opacity-60">
+            Retry
+          </button>
+        </div>
+      )}
+      <PosterGrid columns={columns}>
+        {visible.map((item, index) => {
+          const t: MediaType = (item.media_type ?? 'movie') as MediaType
+          const key = plateKey(item)
+          const entering = !previousVisible.current.has(key)
+          return (
+            <Poster
+              key={`${t}-${item.id}`}
+              item={item}
+              entry={get(t, item.id)}
+              onOpen={onOpen}
+              animate={entering}
+              style={entering ? { animationDelay: `${Math.floor(index / columns) * 90}ms` } : undefined}
+            />
+          )
+        })}
+      </PosterGrid>
+    </section>
+  )
+}
+
+function GenrePicker({
+  genres,
+  selected,
+  onSelect,
+}: {
+  genres: { id: number; name: string }[]
+  selected: number | null
+  onSelect: (id: number | null) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const wrap = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const focusFrame = requestAnimationFrame(() => wrap.current?.querySelector<HTMLButtonElement>('#discover-genre-filter button:not(:disabled)')?.focus())
+    const onDown = (e: PointerEvent) => {
+      if (!wrap.current?.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      setOpen(false)
+      triggerRef.current?.focus()
+    }
+    document.addEventListener('pointerdown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      cancelAnimationFrame(focusFrame)
+      document.removeEventListener('pointerdown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const selectedGenre = genres.find((g) => g.id === selected)
+
+  return (
+    <div className="relative z-30 shrink-0" ref={wrap}>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-controls="discover-genre-filter"
+        aria-label={`Genre filter${selectedGenre ? `: ${selectedGenre.name}` : ''}`}
+        className={`press shrink-0 whitespace-nowrap border px-3 py-1.5 font-sans text-[11px] font-medium uppercase tracking-[0.14em] transition-colors duration-200 ${
+          selected !== null || open
+            ? 'border-[var(--primary)] bg-[var(--primary)] text-primary-foreground font-semibold shadow-xs'
+            : 'border-border bg-card/50 text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground'
+        }`}
+      >
+        <span>{selectedGenre ? `Genre: ${selectedGenre.name}` : 'Genre'}</span>
+      </button>
+
+      {open && (
+        <div id="discover-genre-filter" role="dialog" aria-label="Filter by genre" className="quiet-scroll animate-[ct-tick_180ms_var(--ease-sheet)_both] absolute right-0 top-[calc(100%+6px)] z-50 max-h-[min(70vh,460px)] w-[320px] max-w-[calc(100vw-32px)] origin-top-right overflow-y-auto border border-border bg-background p-4 shadow-[0_16px_48px_rgba(0,0,0,0.35)] sm:w-[380px]">
+          <div className="mb-3 flex items-center justify-between border-b border-border pb-2">
+            <span className="rule-label">Filter by genre</span>
+            {selected !== null && (
+              <button
+                type="button"
+                onClick={() => {
+                  onSelect(null)
+                  setOpen(false)
+                  triggerRef.current?.focus()
+                }}
+                className="press font-sans text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground underline underline-offset-4 hover:text-[var(--primary)]"
+              >
+                Reset
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                onSelect(null)
+                setOpen(false)
+                triggerRef.current?.focus()
+              }}
+              className={`press shrink-0 whitespace-nowrap border px-2.5 py-1.5 font-sans text-[11px] font-medium uppercase tracking-[0.14em] transition-colors ${
+                selected === null
+                  ? 'border-[var(--primary)] bg-[var(--primary)] text-primary-foreground'
+                  : 'border-border bg-card text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground'
+              }`}
+            >
+              All genres
+            </button>
+            {genres.map((g) => {
+              const isSelected = selected === g.id
+              return (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => {
+                    onSelect(isSelected ? null : g.id)
+                    setOpen(false)
+                    triggerRef.current?.focus()
+                  }}
+                  className={`press shrink-0 whitespace-nowrap border px-2.5 py-1.5 font-sans text-[11px] font-medium uppercase tracking-[0.14em] transition-colors ${
+                    isSelected
+                      ? 'border-[var(--primary)] bg-[var(--primary)] text-primary-foreground'
+                      : 'border-border bg-card text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground'
+                  }`}
+                >
+                  {g.name}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number, seed?: TmdbTitle) => void }) {
+  const { entries, get } = useLibrary()
+  const { settings } = useSettings()
+  const [mode, setMode] = useState<Mode>('suggested')
+  const [sort, setSort] = useState('popularity.desc')
+  const [genre, setGenre] = useState<number | null>(null)
+  const [genres, setGenres] = useState<{ id: number; name: string }[]>([])
+  const [query, setQuery] = useState('')
+  const [debounced, setDebounced] = useState('')
+  const [gridColumns, setGridColumns] = useState(() => gridColumnsForViewport(settings.discoverColumns))
+
+  const [results, setResults] = useState<TmdbTitle[]>([])
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [retryPage, setRetryPage] = useState<number | null>(null)
+  const [activeFeedKey, setActiveFeedKey] = useState<string | null>(null)
+  const [animatedRange, setAnimatedRange] = useState<{ start: number; end: number } | null>(null)
+
+  const [shelves, setShelves] = useState<Shelf[]>([])
+  const [shelvesLoading, setShelvesLoading] = useState(false)
+  const [shelvesError, setShelvesError] = useState<string | null>(null)
+  const [shelfRetry, setShelfRetry] = useState(0)
+
+  const type: MediaType = mode === 'tv' ? 'tv' : 'movie'
+  const searching = !!debounced
+  // For You browses shelf rows; every other view is the infinite grid
+  const gridActive = mode !== 'suggested' || searching
+
+  useEffect(() => {
+    const updateColumns = () => setGridColumns(gridColumnsForViewport(settings.discoverColumns))
+    window.addEventListener('resize', updateColumns, { passive: true })
+    return () => window.removeEventListener('resize', updateColumns)
+  }, [settings.discoverColumns])
+
+  const seedSig = useMemo(
+    () =>
+      [...entries]
+        .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0) || b.addedAt - a.addedAt)
+        .slice(0, 8)
+        .map((e) => `${e.mediaType}:${e.id}`)
+        .join(','),
+    [entries],
+  )
+  const seeds = useMemo(
+    () =>
+      seedSig
+        ? seedSig.split(',').map((k) => {
+            const [mediaType, idStr] = k.split(':')
+            const id = Number(idStr)
+            if (!Number.isInteger(id) || id <= 0) return null
+            return { id, mediaType: mediaType as MediaType, title: get(mediaType as MediaType, id)?.title ?? '' }
+          }).filter(Boolean) as { id: number; mediaType: MediaType; title: string }[]
+        : [],
+    [seedSig, entries],
+  )
+  const seedsRef = useRef(seeds)
+  useEffect(() => { seedsRef.current = seeds }, [seeds])
+
+  // Debounce search input
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(query.trim()), 350)
+    return () => clearTimeout(t)
+  }, [query])
+
+  // Load genres for movie/tv modes — use live flag to avoid stale set
+  useEffect(() => {
+    if (mode !== 'movie' && mode !== 'tv') return
+    const controller = new AbortController()
+    let live = true
+    genreList(type, { signal: controller.signal })
+      .then((g) => { if (live) setGenres(g) })
+      .catch(() => { if (live) setGenres([]) })
+    return () => {
+      live = false
+      controller.abort()
+    }
+  }, [mode, type, settings.metadataLanguage])
+
+  const shelfToken = useRef(0)
+  // Plates on screen per shelf, shared so a shuffle never repeats one across categories.
+  const claims = useRef(new Map<string, Set<string>>())
+
+  // For You shelves: per-seed picks + genre exploration + trending, assembled in parallel.
+  // Seeds drive the personal rows; genre rows deliberately reach beyond the library.
+  useEffect(() => {
+    if (gridActive) return
+    const controller = new AbortController()
+    let live = true
+    const token = ++shelfToken.current
+    setShelvesLoading(true)
+    setShelvesError(null)
+    setShelves([])
+    const sig = seedSig
+    ;(async () => {
+      try {
+        const topSeeds = seedsRef.current.slice(0, 3)
+        const [seedPages, trendItems, movieGenres] = await Promise.all([
+          Promise.all(
+            topSeeds.map((s) =>
+              recommendations(s.mediaType, s.id, 1, { signal: controller.signal }).then(
+                (r) => ({ seed: s, items: r.results.map((x) => ({ ...x, media_type: x.media_type ?? s.mediaType })) }),
+                () => ({ seed: s, items: [] as TmdbTitle[] }),
+              ),
+            ),
+          ),
+          trending('all', 'week', 1, { signal: controller.signal }).then(
+            (r) => r.results,
+            () => [] as TmdbTitle[],
+          ),
+          genreList('movie', { signal: controller.signal }).then(
+            (g) => g,
+            () => [] as { id: number; name: string }[],
+          ),
+        ])
+        if (!live || token !== shelfToken.current) return
+        const genrePicks = pickGenres(movieGenres, sig, 3)
+        const genreSorts = [
+          { id: 'vote_average.desc', label: 'Top rated', gte: 200 },
+          { id: 'popularity.desc', label: 'Popular now', gte: 100 },
+          { id: 'primary_release_date.desc', label: 'Newest', gte: 50 },
+        ]
+        const genrePages = await Promise.all(
+          genrePicks.map((g, i) => {
+            const sort = genreSorts[i % genreSorts.length]
+            return discover('movie', {
+              page: 1,
+              sort_by: sort.id,
+              with_genres: String(g.id),
+              'vote_count.gte': sort.gte,
+            }, { signal: controller.signal }).then(
+              (r) => ({ genre: g, sort, items: r.results.map((x) => ({ ...x, media_type: 'movie' as MediaType })) }),
+              () => ({ genre: g, sort, items: [] as TmdbTitle[] }),
+            )
+          }),
+        )
+        if (!live || token !== shelfToken.current) return
+        // First occurrence wins — the same title never repeats across shelves
+        const seen = new Set<string>()
+        const take = (items: TmdbTitle[], n: number) => {
+          const out: TmdbTitle[] = []
+          for (const it of items) {
+            const k = plateKey(it)
+            if (seen.has(k)) continue
+            seen.add(k)
+            out.push(it)
+            if (out.length >= n) break
+          }
+          return out
+        }
+        const next: Shelf[] = []
+        const allSeedItems: TmdbTitle[] = []
+        for (const { items } of seedPages) {
+          allSeedItems.push(...items)
+        }
+        const libraryPicked = take(allSeedItems, SHELF_POOL)
+        if (libraryPicked.length >= 4 && topSeeds.length > 0) {
+          next.push({
+            key: 'from-library',
+            title: 'From your library',
+            items: libraryPicked,
+            // A shuffle steps to the next seed, then walks that seed's later pages.
+            load: (page, signal) => {
+              const seed = topSeeds[(page - 1) % topSeeds.length]
+              const inner = Math.floor((page - 1) / topSeeds.length) + 1
+              return recommendations(seed.mediaType, seed.id, inner, { signal }).then(
+                (r) => r.results.map((x) => ({ ...x, media_type: x.media_type ?? seed.mediaType })),
+                () => [] as TmdbTitle[],
+              )
+            },
+          })
+        }
+        genrePages.forEach(({ genre, sort, items }) => {
+          const picked = take(items, SHELF_POOL)
+          if (picked.length >= 4) {
+            next.push({
+              key: `genre-${genre.id}-${sort.label}`,
+              title: `${sort.label} ${genre.name}`,
+              note: 'Beyond your library — something unlike the usual shelf.',
+              items: picked,
+              load: (page, signal) =>
+                discover('movie', {
+                  page,
+                  sort_by: sort.id,
+                  with_genres: String(genre.id),
+                  'vote_count.gte': sort.gte,
+                }, { signal }).then(
+                  (r) => r.results.map((x) => ({ ...x, media_type: 'movie' as MediaType })),
+                  () => [] as TmdbTitle[],
+                ),
+            })
+          }
+        })
+        const trendPicked = take(trendItems, SHELF_POOL)
+        if (trendPicked.length >= 4) {
+          next.push({
+            key: 'trending-week',
+            title: 'Trending this week',
+            note: 'Across films and series.',
+            items: trendPicked,
+            load: (page, signal) => trending('all', 'week', page, { signal }).then((r) => r.results, () => [] as TmdbTitle[]),
+          })
+        }
+        setShelves(next)
+      } catch (e) {
+        if (live && token === shelfToken.current) setShelvesError(e instanceof Error ? e.message : 'Failed to load suggestions')
+      } finally {
+        if (live && token === shelfToken.current) setShelvesLoading(false)
+      }
+    })()
+    return () => {
+      live = false
+      controller.abort()
+    }
+  }, [gridActive, seedSig, settings.includeAdult, settings.metadataLanguage, shelfRetry])
+
+  /** One page of whichever feed is active. Suggestions walk the seed list. */
+  const fetchPage = useCallback(
+    (p: number, signal?: AbortSignal): Promise<Page> => {
+      if (searching) return searchMulti(debounced, p, { signal })
+      if (mode === 'trending') return trending('all', 'week', p, { signal })
+      if (mode === 'suggested') {
+        const currentSeeds = seedsRef.current
+        if (currentSeeds.length === 0) return trending('all', 'week', p, { signal })
+        const seed = currentSeeds[(p - 1) % currentSeeds.length]
+        const innerPage = Math.floor((p - 1) / currentSeeds.length) + 1
+        return recommendations(seed.mediaType, seed.id, innerPage, { signal }).then((r) => ({
+          ...r,
+          results: r.results.map((x) => ({ ...x, media_type: x.media_type ?? seed.mediaType })),
+          total_pages: r.total_pages,
+        }))
+      }
+      return discover(type, {
+        page: p,
+        sort_by: mode === 'tv' && sort === 'primary_release_date.desc' ? 'first_air_date.desc' : sort,
+        ...(genre ? { with_genres: String(genre) } : {}),
+      }, { signal }).then((r) => ({ ...r, results: r.results.map((x) => ({ ...x, media_type: type })) }))
+    },
+    [searching, debounced, mode, type, sort, genre, settings.includeAdult, settings.metadataLanguage],
+  )
+
+  const feedToken = useRef(0)
+  const feedControllerRef = useRef<AbortController | null>(null)
+  const feedCacheRef = useRef(new Map<string, FeedSnapshot>())
+  const resultsRef = useRef(results)
+  resultsRef.current = results
+  const loadingRef = useRef(loading)
+  loadingRef.current = loading
+  const errorRef = useRef(error)
+  errorRef.current = error
+  const feedKey = JSON.stringify([
+    mode,
+    searching ? debounced : '',
+    searching ? null : sort,
+    searching ? null : genre,
+    settings.includeAdult,
+    settings.metadataLanguage,
+  ])
+  const feedKeyRef = useRef(feedKey)
+  feedKeyRef.current = feedKey
+  const cachedFeed = gridActive ? feedCacheRef.current.get(feedKey) : undefined
+  const displayResults = activeFeedKey === feedKey ? results : cachedFeed?.results ?? []
+  const displayPage = activeFeedKey === feedKey ? page : cachedFeed?.page ?? 1
+  const displayTotalPages = activeFeedKey === feedKey ? totalPages : cachedFeed?.totalPages ?? 1
+  const displayError = activeFeedKey === feedKey ? error : null
+  const gridLoading = gridActive && (activeFeedKey === feedKey ? loading : !cachedFeed)
+  const showGridSkeletons = useDelayedLoading(gridLoading, feedKey)
+
+  const requestPage = useCallback((requestedPage: number, token: number) => {
+    if (token !== feedToken.current) return
+    feedControllerRef.current?.abort()
+    const controller = new AbortController()
+    feedControllerRef.current = controller
+    loadingRef.current = true
+    errorRef.current = null
+    setLoading(true)
+    setError(null)
+    setRetryPage(null)
+
+    fetchPage(requestedPage, controller.signal)
+      .then((response) => {
+        if (token !== feedToken.current || controller.signal.aborted) return
+        const nextPage = requestedPage === 1 ? 1 : requestedPage
+        const firstNewIndex = requestedPage === 1 ? 0 : resultsRef.current.length
+        const nextResults = uniqueTitles(
+          requestedPage === 1 ? response.results : [...resultsRef.current, ...response.results],
+        ).slice(0, MAX_GRID_RESULTS)
+        resultsRef.current = nextResults
+        setActiveFeedKey(feedKey)
+        setAnimatedRange({ start: firstNewIndex, end: nextResults.length })
+        setResults(nextResults)
+        setPage(nextPage)
+        setTotalPages(response.total_pages ?? nextPage)
+        feedCacheRef.current.delete(feedKey)
+        feedCacheRef.current.set(feedKey, {
+          results: nextResults,
+          page: nextPage,
+          totalPages: response.total_pages ?? nextPage,
+        })
+        while (feedCacheRef.current.size > MAX_CACHED_FEEDS) {
+          const oldestKey = feedCacheRef.current.keys().next().value
+          if (oldestKey === undefined) break
+          feedCacheRef.current.delete(oldestKey)
+        }
+      })
+      .catch((e) => {
+        if (token !== feedToken.current || controller.signal.aborted) return
+        const message = e instanceof Error && e.message !== 'Request cancelled'
+          ? e.message
+          : 'Could not load titles. Check your connection and retry.'
+        errorRef.current = message
+        setError(message)
+        setRetryPage(requestedPage)
+      })
+      .finally(() => {
+        if (token === feedToken.current && feedControllerRef.current === controller) {
+          feedControllerRef.current = null
+          loadingRef.current = false
+          setLoading(false)
+        }
+      })
+  }, [fetchPage, feedKey])
+
+  // Reset and load page one when feed identity changes (mode/search/sort/genre/includeAdult)
+  // Note: seedsRef is intentionally NOT a dep — adding a library item shouldn't wipe the grid
+  // Shelved For You has its own fetch path — the grid stays idle there
+  useEffect(() => {
+    feedControllerRef.current?.abort()
+    const token = ++feedToken.current
+    errorRef.current = null
+    setError(null)
+    setRetryPage(null)
+
+    if (!gridActive) {
+      setAnimatedRange(null)
+      loadingRef.current = false
+      setLoading(false)
+      return () => {
+        if (feedToken.current === token) feedToken.current += 1
+        feedControllerRef.current?.abort()
+      }
+    }
+
+    const cached = feedCacheRef.current.get(feedKey)
+    if (cached) {
+      feedCacheRef.current.delete(feedKey)
+      feedCacheRef.current.set(feedKey, cached)
+      setActiveFeedKey(feedKey)
+      setAnimatedRange(null)
+      resultsRef.current = cached.results
+      setResults(cached.results)
+      setPage(cached.page)
+      setTotalPages(cached.totalPages)
+      loadingRef.current = false
+      setLoading(false)
+    } else {
+      setActiveFeedKey(feedKey)
+      setAnimatedRange(null)
+      resultsRef.current = []
+      setResults([])
+      setPage(1)
+      setTotalPages(1)
+      requestPage(1, token)
+    }
+
+    return () => {
+      if (feedToken.current === token) feedToken.current += 1
+      feedControllerRef.current?.abort()
+    }
+  }, [feedKey, gridActive, requestPage])
+
+  const loadMoreRef = useRef<() => void>(() => {})
+  const loadMore = useCallback(() => {
+    if (feedKey !== feedKeyRef.current || activeFeedKey !== feedKey || !gridActive || loadingRef.current || errorRef.current || page >= totalPages || resultsRef.current.length >= MAX_GRID_RESULTS) return
+    requestPage(page + 1, feedToken.current)
+  }, [activeFeedKey, feedKey, gridActive, page, requestPage, totalPages])
+
+  useEffect(() => { loadMoreRef.current = loadMore }, [loadMore])
+
+  // IntersectionObserver with proper re-attach when sentinel changes
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+  const setSentinel = useCallback((node: HTMLDivElement | null) => {
+    sentinelRef.current = node
+  }, [])
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el || !gridActive) return
+    const io = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) loadMoreRef.current()
+    }, { rootMargin: '400px' })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [results.length, gridActive, error])
+
+  const capped = displayResults.length >= MAX_GRID_RESULTS
+  const exhausted = (displayPage >= displayTotalPages || capped) && displayResults.length > 0
+
+  return (
+    <div className="space-y-8">
+      <SectionHead
+        title="Discover"
+        fullBleed
+        titleClassName="text-[56px] sm:text-[64px]"
+        headingLevel={1}
+        right={<SearchInput value={query} onChange={setQuery} className="w-56 md:w-72" />}
+      />
+
+      <div className="relative z-30 flex flex-wrap items-center justify-between gap-x-4 gap-y-3" role="group" aria-label="Discover modes">
+        <div className="flex flex-wrap items-center gap-2">
+          {(['suggested', 'trending', 'movie', 'tv'] as Mode[]).map((m) => (
+            <Chip
+              key={m}
+              active={mode === m && !searching}
+              onClick={() => {
+                setQuery('')
+                setDebounced('')
+                if (m !== mode) setGenre(null)
+                setMode(m)
+              }}
+            >
+              {m === 'movie' ? 'Films' : m === 'tv' ? 'TV Shows' : m === 'suggested' ? 'For you' : 'Trending'}
+            </Chip>
+          ))}
+        </div>
+
+        {(mode === 'movie' || mode === 'tv') && !searching && (
+          <div className="ml-auto flex flex-wrap items-center gap-1.5">
+            {SORTS.map((s) => (
+              <Chip
+                key={s.id}
+                active={sort === s.id}
+                onClick={() => setSort(s.id)}
+              >
+                {s.label}
+              </Chip>
+            ))}
+            {genres.length > 0 && (
+              <>
+                <span className="mx-1 h-3.5 w-px bg-border" aria-hidden />
+                <GenrePicker
+                  genres={genres}
+                  selected={genre}
+                  onSelect={setGenre}
+                />
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {searching && (
+        <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border pb-2">
+          <h3 className="font-display text-[22px]">{`Search — "${debounced}"`}</h3>
+        </div>
+      )}
+      {!gridActive && shelvesLoading && (
+        <span className="rule-label" aria-live="polite">loading…</span>
+      )}
+      {gridActive && (
+        <span className="sr-only" role="status" aria-live="polite">
+          {gridLoading ? (displayResults.length ? 'Loading more titles' : 'Loading titles') : ''}
+        </span>
+      )}
+      {!gridActive ? (
+        <>
+          {shelvesError && (
+            <div role="alert" className="animate-fade flex items-center justify-between gap-4 border border-[var(--primary)]/20 bg-[var(--primary)]/5 px-4 py-3">
+              <p className="font-sans text-[12px] text-[var(--primary)]">{shelvesError}</p>
+              <button
+                onClick={() => setShelfRetry((n) => n + 1)}
+                className="press shrink-0 border border-[var(--primary)] bg-[var(--primary)] px-3 py-1 font-sans text-[11px] font-medium uppercase tracking-[0.12em] text-primary-foreground hover:opacity-90"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+          {shelvesLoading && shelves.length === 0 && !shelvesError && (
+            <div className="flex min-h-[50vh] items-center justify-center py-12 animate-fade" aria-live="polite">
+              <Spinner size={38} />
+            </div>
+          )}
+          {!shelvesLoading && !shelvesError && shelves.length === 0 && (
+            <Empty>No suggestions yet — rate something in your library or try Trending</Empty>
+          )}
+          {shelves.map((s, idx) => (
+            <div key={s.key} className="animate-fade" style={{ animationDelay: `${idx * 40}ms` }}>
+              <ShelfRow shelf={s} claims={claims} onOpen={onOpen} />
+            </div>
+          ))}
+        </>
+      ) : (
+        <>
+          {displayError && (
+            <div role="alert" className="animate-fade flex items-center justify-between gap-4 border border-[var(--primary)]/20 bg-[var(--primary)]/5 px-4 py-3">
+              <p className="font-sans text-[12px] text-[var(--primary)]">{displayError}</p>
+              <button
+                type="button"
+                onClick={() => requestPage(retryPage ?? 1, feedToken.current)}
+                disabled={gridLoading}
+                className="press shrink-0 border border-[var(--primary)] bg-[var(--primary)] px-3 py-1 font-sans text-[11px] font-medium uppercase tracking-[0.12em] text-primary-foreground hover:opacity-90 disabled:cursor-wait disabled:opacity-60"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+          {!gridLoading && !displayError && displayResults.length === 0 && <Empty>No records match — try a different search or clear filters</Empty>}
+
+          <div aria-busy={gridLoading}>
+            {showGridSkeletons && displayResults.length === 0 && !displayError && (
+              <PosterGrid columns={settings.discoverColumns}>
+                {Array.from({ length: gridColumns * 2 }, (_, i) => (
+                  <PosterSkeleton
+                    key={`init-skel-${i}`}
+                    compact={settings.density === 'compact'}
+                    style={{ animationDelay: `${Math.floor(i / gridColumns) * 70}ms` }}
+                  />
+                ))}
+              </PosterGrid>
+            )}
+
+            {displayResults.length > 0 && (
+              <PosterGrid columns={settings.discoverColumns}>
+                {displayResults.map((item, i) => {
+                  const t: MediaType = (item.media_type ?? type) as MediaType
+                  const animate = activeFeedKey === feedKey && animatedRange !== null && i >= animatedRange.start && i < animatedRange.end
+                  const row = Math.floor(i / gridColumns)
+                  const firstNewRow = animatedRange ? Math.floor(animatedRange.start / gridColumns) : row
+                  return (
+                    <Poster
+                      key={`${t}-${item.id}`}
+                      item={item}
+                      entry={get(t, item.id)}
+                      onOpen={onOpen}
+                      animate={animate}
+                      eager={i < gridColumns * 2}
+                      style={animate ? { animationDelay: `${(row - firstNewRow) * 180}ms` } : undefined}
+                    />
+                  )
+                })}
+                {showGridSkeletons && displayResults.length > 0 && (
+                  <>
+                    {Array.from({ length: (gridColumns - (displayResults.length % gridColumns)) % gridColumns }, (_, i) => (
+                      <div key={`loading-pad-${i}`} className="invisible" aria-hidden="true" />
+                    ))}
+                    {Array.from({ length: gridColumns }, (_, i) => (
+                      <PosterSkeleton
+                        key={`append-skel-${i}`}
+                        compact={settings.density === 'compact'}
+                        style={{ animationDelay: '0ms' }}
+                      />
+                    ))}
+                  </>
+                )}
+              </PosterGrid>
+            )}
+          </div>
+
+          <div ref={setSentinel} className="h-px" aria-hidden />
+
+          {exhausted && !gridLoading && (
+            <p className="animate-fade rule-label border-t border-border py-6 text-center">
+              {capped ? `Catalogue limit reached · first ${displayResults.length} records shown` : `End of catalogue · ${displayResults.length} records`}
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
