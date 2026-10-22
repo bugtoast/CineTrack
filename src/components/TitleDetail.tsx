@@ -266,7 +266,7 @@ export default function TitleDetail({
           </span>
           <button
             onClick={onClose}
-            className="press flex h-8 w-8 shrink-0 items-center justify-center border border-border text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground"
+            className="press flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
             aria-label="Close"
           >
             <CloseIcon />
@@ -971,7 +971,7 @@ setShown(false)
           </div>
           <button
             onClick={close}
-            className="press flex h-8 w-8 shrink-0 items-center justify-center border border-border text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground"
+            className="press flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
             aria-label="Close"
           >
             <CloseIcon />
@@ -1404,7 +1404,7 @@ function EditModal({
           <button
             type="button"
             onClick={close}
-            className="press flex h-8 w-8 shrink-0 items-center justify-center border border-border text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground"
+            className="press flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
             aria-label="Close editor"
           >
             <CloseIcon />
@@ -1853,7 +1853,7 @@ function RewatchModal({
           </div>
           <button
             onClick={close}
-            className="press flex h-8 w-8 shrink-0 items-center justify-center border border-border text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground"
+            className="press flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
             aria-label="Close rewatch log"
           >
             <CloseIcon />

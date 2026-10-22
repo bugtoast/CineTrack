@@ -125,7 +125,7 @@ export default function CastDetail({
           <button
             type="button"
             onClick={close}
-            className="press flex h-8 w-8 shrink-0 items-center justify-center border border-border text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground"
+            className="press flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
             aria-label="Close cast file"
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

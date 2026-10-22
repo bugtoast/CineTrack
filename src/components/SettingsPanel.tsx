@@ -128,7 +128,7 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
           <button
             onClick={onClose}
             aria-label="Close"
-            className="press flex h-8 w-8 items-center justify-center border border-border bg-background text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground"
+            className="press flex h-8 w-8 items-center justify-center bg-background text-muted-foreground hover:text-foreground"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M18 6L6 18M6 6l12 12" />
