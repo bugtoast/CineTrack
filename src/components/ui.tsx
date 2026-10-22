@@ -973,25 +973,17 @@ export function ConfirmDialog({
         onWheel={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-3 border-b border-border pb-3">
-          <span
-            aria-hidden
-            className={`flex h-7 w-7 items-center justify-center ${
-              tone === 'danger'
-                ? 'bg-[var(--destructive)] text-[var(--destructive-foreground)]'
-                : 'bg-[var(--foreground)] text-[var(--background)]'
-            }`}
-          >
-            {tone === 'danger' ? (
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-              </svg>
-            ) : (
+          {tone !== 'danger' && (
+            <span
+              aria-hidden
+              className="flex h-7 w-7 items-center justify-center bg-[var(--foreground)] text-[var(--background)]"
+            >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <circle cx="12" cy="12" r="10" />
                 <path d="M12 9v4M12 17h.01" />
               </svg>
-            )}
-          </span>
+            </span>
+          )}
           <h3 id="confirm-dialog-title" className="font-display text-[22px] leading-none">
             {title}
           </h3>
