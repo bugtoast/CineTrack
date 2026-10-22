@@ -821,7 +821,7 @@ export type Activity = { entry: Entry; at: number; label: string }
 /** Completed viewings only — no per-episode rows. Movies use watchedAt,
  *  finished series collapse to a single row at their latest episode
  *  timestamp, and rewatch logs pass through. */
-export function recentCompletions(entries: Entry[], limit = 8): Activity[] {
+export function recentCompletions(entries: Entry[], limit?: number): Activity[] {
   const events: Activity[] = []
   for (const e of entries) {
     if (e.mediaType === 'movie') {
@@ -834,7 +834,8 @@ export function recentCompletions(entries: Entry[], limit = 8): Activity[] {
       if (validStamp(at)) events.push({ entry: e, at, label: 'Rewatch' })
     }
   }
-  return events.sort((a, b) => b.at - a.at).slice(0, limit)
+  events.sort((a, b) => b.at - a.at)
+  return limit == null ? events : events.slice(0, limit)
 }
 
 export function recentActivity(entries: Entry[], limit = 12): Activity[] {

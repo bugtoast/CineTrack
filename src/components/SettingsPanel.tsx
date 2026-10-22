@@ -300,7 +300,7 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
             />
             <OptionsRow
               label="Ledger dates"
-              note="How viewing dates read in Recently watched"
+              note="How viewing dates read in Activity"
               value={settings.dateStyle}
               options={[
                 { id: 'absolute', label: 'Absolute' },
