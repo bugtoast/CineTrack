@@ -1,9 +1,10 @@
-import { Suspense, lazy, useMemo, useState } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { img, type MediaType, type TmdbTitle } from '../lib/tmdb'
 import { countRewatches, formatDayMonth, formatRelativeDay, minutesWatched, progress, recentCompletions, useLibrary, watchedCount } from '../lib/library'
 import { useSettings } from '../lib/settings'
 import type { LibraryView } from './Library'
-import { Empty, SectionHead, Stat } from './ui'
+import { Empty, SectionHead, Stat, useBodyScrollLock, useFocusTrap } from './ui'
 import MastheadName from './MastheadName'
 
 const MonthlyChart = lazy(() => import('./MonthlyChart'))
@@ -81,10 +82,12 @@ export default function Home({
     }
   }, [entries])
 
-  const activity = useMemo(() => recentCompletions(entries, 10), [entries])
+  const allActivity = useMemo(() => recentCompletions(entries), [entries])
+  const activity = allActivity.slice(0, 10)
   const hasData = entries.length > 0
 
   const [shuffleKey, setShuffleKey] = useState(0)
+  const [activityOpen, setActivityOpen] = useState(false)
   const suggestions = useMemo(() => {
     return pickDiverse(stats.planned, 3)
   }, [stats.planned, shuffleKey])
@@ -166,7 +169,20 @@ export default function Home({
 
       <section className="grid gap-8 md:grid-cols-[1.2fr_1fr] xl:grid-cols-[1fr_1.2fr]">
         <div>
-          <SectionHead title="Recently watched" note="A running ledger of the last entries marked seen." rule={false} />
+          <SectionHead
+            title="Activity"
+            note="A running ledger of the last entries marked seen."
+            rule={false}
+            right={allActivity.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setActivityOpen(true)}
+                className="press inline-flex py-2 font-sans text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground transition-colors hover:text-[var(--primary)]"
+              >
+                See all activity
+              </button>
+            ) : undefined}
+          />
           {activity.length === 0 ? (
             <Empty>No viewings recorded</Empty>
           ) : (
@@ -261,6 +277,18 @@ export default function Home({
         </div>
       </section>
 
+      {activityOpen && (
+        <ActivityModal
+          items={allActivity}
+          dateStyle={settings.dateStyle}
+          onClose={() => setActivityOpen(false)}
+          onOpenTitle={(mediaType, id) => {
+            setActivityOpen(false)
+            onOpen(mediaType, id)
+          }}
+        />
+      )}
+
       <div id="monthly-log" className="scroll-mt-24">
         <Suspense
           fallback={
@@ -285,4 +313,92 @@ export default function Home({
       )}
     </div>
   )
+}
+
+function ActivityModal({
+  items,
+  dateStyle,
+  onClose,
+  onOpenTitle,
+}: {
+  items: ReturnType<typeof recentCompletions>
+  dateStyle: 'relative' | 'absolute'
+  onClose: () => void
+  onOpenTitle: (type: MediaType, id: number) => void
+}) {
+  const dialogRef = useRef<HTMLDivElement | null>(null)
+  const [shown, setShown] = useState(false)
+  useBodyScrollLock(true)
+  useFocusTrap(dialogRef, shown)
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setShown(true))
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation()
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.removeEventListener('keydown', onKeyDown, true)
+    }
+  }, [onClose])
+
+  return createPortal((
+    <div
+      className={`modal-backdrop fixed inset-0 z-[80] flex items-center justify-center bg-[rgba(20,19,15,0.65)] p-3 sm:p-4 ${shown ? '' : 'pointer-events-none'}`}
+      data-open={shown}
+      onClick={onClose}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="activity-modal-title"
+        className="modal-sheet flex h-[min(82vh,680px)] w-full max-w-[620px] flex-col border border-border bg-background shadow-[0_30px_90px_-20px_rgba(0,0,0,0.65)]"
+        data-open={shown}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4.5 py-3">
+          <div className="min-w-0 pr-2">
+            <span className="rule-label block text-[var(--primary)] text-[10px]">Viewing ledger · {items.length} {items.length === 1 ? 'entry' : 'entries'}</span>
+            <h2 id="activity-modal-title" className="mt-0.5 truncate font-display text-[20px] leading-tight">Activity</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="press flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
+            aria-label="Close activity"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </header>
+        <ol className="quiet-scroll min-h-0 flex-1 divide-y divide-border overflow-y-auto px-4.5">
+          {items.map((item, index) => (
+            <li key={`${item.entry.mediaType}-${item.entry.id}-${item.at}-${index}`}>
+              <button
+                type="button"
+                onClick={() => onOpenTitle(item.entry.mediaType, item.entry.id)}
+                className="group flex w-full items-baseline gap-4 py-3 text-left transition-colors duration-200 hover:text-[var(--primary)]"
+              >
+                <span className="min-w-0 flex-1 truncate font-sans text-[14px] transition-transform duration-300 group-hover:translate-x-1 sm:text-[15px]">
+                  {item.entry.title}
+                </span>
+                <span className="flex shrink-0 items-baseline gap-3 sm:gap-5">
+                  <span className="font-sans text-[10px] text-[var(--accent)]">{item.label}</span>
+                  <time dateTime={new Date(item.at).toISOString()} className="min-w-[3.5rem] text-right font-sans text-[10px] tabular-nums text-muted-foreground">
+                    {dateStyle === 'relative' ? formatRelativeDay(item.at) : formatDayMonth(item.at)}
+                  </time>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </div>
+  ), document.body)
 }
