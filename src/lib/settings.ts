@@ -37,6 +37,7 @@ export type Settings = {
   hideSpoilers: boolean
   blurEpisodeCovers: boolean
   hideEpisodeCovers: boolean
+  showSpecials: boolean
   autoCompleteSeries: boolean
   posterMotion: boolean
   libraryColumns: number
@@ -63,6 +64,7 @@ const DEFAULTS: Settings = {
   hideSpoilers: false,
   blurEpisodeCovers: false,
   hideEpisodeCovers: false,
+  showSpecials: true,
   autoCompleteSeries: true,
   posterMotion: true,
   libraryColumns: 6,
@@ -99,6 +101,7 @@ function sanitize(s: Partial<Settings> & Record<string, unknown>): Settings {
   if (s.density === 'comfortable' || s.density === 'compact') out.density = s.density
   out.hideSpoilers = !!s.hideSpoilers
   out.hideEpisodeCovers = !!s.hideEpisodeCovers
+  out.showSpecials = s.showSpecials !== false
   out.blurEpisodeCovers = !!s.blurEpisodeCovers && !out.hideEpisodeCovers
   out.autoCompleteSeries = s.autoCompleteSeries !== false
   out.posterMotion = s.posterMotion !== false

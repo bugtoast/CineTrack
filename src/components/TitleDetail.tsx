@@ -2049,9 +2049,10 @@ function Seasons({
   onToggle: (s: number, e: number) => void
   onBulk: (s: number, nums: number[], watched: boolean) => void
 }) {
+  const { settings } = useSettings()
   const ordered = [...seasons].sort((a, b) =>
     a.season_number === 0 ? 1 : b.season_number === 0 ? -1 : a.season_number - b.season_number,
-  )
+  ).filter((season) => settings.showSpecials || season.season_number !== 0)
   const lastMarkedSeason = Object.entries(watched).reduce<{ season: number; at: number } | null>((latest, [key, at]) => {
     const [seasonText, episodeText] = key.split('-')
     const season = Number(seasonText)
@@ -2070,7 +2071,6 @@ function Seasons({
   const [seasonAttempt, setSeasonAttempt] = useState(0)
   const [confirmClear, setConfirmClear] = useState<number | null>(null)
   const fetchedRef = useRef<Set<number>>(new Set())
-  const { settings } = useSettings()
   const hideDescriptions = settings.hideSpoilers
   const { toast } = useToast()
 
@@ -2079,19 +2079,26 @@ function Seasons({
     fetchedRef.current.clear()
   }, [showId])
 
-  const current = ordered.find((s) => s.season_number === open) ?? ordered[0]
+  const visibleOpen = ordered.some((s) => s.season_number === open)
+    ? open
+    : ordered[0]?.season_number ?? null
+  const current = ordered.find((s) => s.season_number === visibleOpen) ?? ordered[0]
 
   useEffect(() => {
-    if (fetchedRef.current.has(open)) return
+    if (visibleOpen == null) {
+      setLoading(false)
+      return
+    }
+    if (fetchedRef.current.has(visibleOpen)) return
     const controller = new AbortController()
     let live = true
     setLoading(true)
     setSeasonError(null)
-    fetchSeason(showId, open, { signal: controller.signal })
+    fetchSeason(showId, visibleOpen, { signal: controller.signal })
       .then((s) => {
         if (live) {
-          fetchedRef.current.add(open)
-          setEpisodes((prev) => ({ ...prev, [open]: s.episodes }))
+          fetchedRef.current.add(visibleOpen)
+          setEpisodes((prev) => ({ ...prev, [visibleOpen]: s.episodes }))
         }
       })
       .catch((e) => {
@@ -2106,7 +2113,7 @@ function Seasons({
       live = false
       controller.abort()
     }
-  }, [open, showId, seasonAttempt])
+  }, [visibleOpen, showId, seasonAttempt])
 
   const seenIn = (s: { season_number: number; episode_count: number }) => {
     const eps = episodes[s.season_number]
@@ -2131,7 +2138,7 @@ function Seasons({
       <div className="quiet-scroll -mx-1 mb-5 flex gap-2 overflow-x-auto px-1 pb-2">
         {ordered.map((s) => {
           const seen = seenIn(s)
-          const active = s.season_number === open
+          const active = s.season_number === visibleOpen
           return (
             <button
               key={s.id}

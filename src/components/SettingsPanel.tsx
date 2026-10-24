@@ -383,6 +383,12 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
                 set('hideEpisodeCovers', v)
               }}
             />
+            <Toggle
+              label="Show specials"
+              note="Include the Specials season in TV title details."
+              value={settings.showSpecials}
+              onChange={(v) => set('showSpecials', v)}
+            />
           </Group>
 
           <Group title="Shelf defaults" note="Where the shelves open.">
