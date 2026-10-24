@@ -112,7 +112,6 @@ export default function Library({
         fullBleed
         headingLevel={1}
         titleClassName="text-[72px] sm:text-[88px]"
-        right={<SearchInput value={q} onChange={setQ} className="w-56 md:w-72" />}
       />
 
       {/* Tabs + Filter */}
@@ -131,16 +130,19 @@ export default function Library({
             </Chip>
           ))}
         </div>
-        <FilterBar
-          filter={filter}
-          showDropped={tab !== 'movie'}
-          sort={sort}
-          minRating={minRating}
-          count={shown.length}
-          onFilter={setFilter}
-          onSort={setSort}
-          onMinRating={setMinRating}
-        />
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          <FilterBar
+            filter={filter}
+            showDropped={tab !== 'movie'}
+            sort={sort}
+            minRating={minRating}
+            count={shown.length}
+            onFilter={setFilter}
+            onSort={setSort}
+            onMinRating={setMinRating}
+          />
+          <SearchInput value={q} onChange={setQ} className="w-64 md:w-96" />
+        </div>
       </div>
 
       {entries.length === 0 ? (
@@ -400,16 +402,25 @@ function FilterBar({
             if (!open) updatePosition()
             setOpen((o) => !o)
           }}
+          aria-haspopup="dialog"
           aria-expanded={open}
           aria-controls="library-filter-popover"
           aria-label={`Filter shelf${activeCount ? `, ${activeCount} active` : ''}`}
-          className={`press relative flex h-9 items-center justify-center border px-4 font-sans text-[11px] font-medium uppercase tracking-[0.14em] transition-colors duration-200 ${
+          className={`press relative flex h-9 items-center justify-center gap-2 border px-3 py-1.5 font-sans text-[11px] font-medium uppercase tracking-[0.14em] transition-colors duration-200 ${
             open || active
-              ? 'border-[var(--primary)] bg-card text-[var(--primary)]'
-              : 'border-border bg-background text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground'
+              ? 'border-[var(--primary)] bg-[var(--primary)] text-primary-foreground font-semibold shadow-xs'
+              : 'border-border bg-card/50 text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground'
           }`}
         >
           <span>Filter</span>
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            fill="none"
+            className={`h-4 w-4 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          >
+            <path d="m7 10 5 5 5-5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
           {activeCount > 0 && (
             <span className="absolute -right-2 -top-2 flex h-[18px] min-w-[18px] items-center justify-center border border-[var(--primary)] bg-[var(--primary)] px-1 font-sans text-[10px] font-bold leading-none text-primary-foreground">
               {activeCount}

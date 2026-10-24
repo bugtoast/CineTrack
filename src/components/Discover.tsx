@@ -22,6 +22,128 @@ const SORTS = [
   { id: 'revenue.desc', label: 'Highest grossing' },
 ]
 
+
+function BrowseOptionsDropdown({
+  sort,
+  onSort,
+  genres,
+  selectedGenre,
+  onSelectGenre,
+}: {
+  sort: string
+  onSort: (value: string) => void
+  genres: { id: number; name: string }[]
+  selectedGenre: number | null
+  onSelectGenre: (id: number | null) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const selectedSort = SORTS.find((option) => option.id === sort) ?? SORTS[0]
+  const selectedGenreName = genres.find((g) => g.id === selectedGenre)?.name
+
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpen(false)
+        triggerRef.current?.focus()
+      }
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open])
+
+  const chipClass = (active: boolean) => `press shrink-0 whitespace-nowrap border px-2.5 py-1.5 font-sans text-[11px] font-medium uppercase tracking-[0.14em] transition-colors ${
+    active
+      ? 'border-[var(--primary)] bg-[var(--primary)] text-primary-foreground'
+      : 'border-border bg-card text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground'
+  }`
+
+  return (
+    <div ref={rootRef} className="relative z-30 shrink-0">
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+        aria-controls="discover-browse-options"
+        aria-label={`Browse options: ${selectedSort.label}${selectedGenreName ? `, ${selectedGenreName}` : ', all genres'}`}
+        className={`press flex h-9 shrink-0 items-center gap-2 whitespace-nowrap border px-3 py-1.5 font-sans text-[11px] font-medium uppercase tracking-[0.14em] transition-colors duration-200 ${
+          open || selectedGenre !== null || sort !== SORTS[0].id
+            ? 'border-[var(--primary)] bg-[var(--primary)] text-primary-foreground font-semibold shadow-xs'
+            : 'border-border bg-card/50 text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground'
+        }`}
+      >
+        <span>{selectedSort.label}{selectedGenreName ? ` · ${selectedGenreName}` : ''}</span>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className={`h-4 w-4 shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>
+          <path d="m7 10 5 5 5-5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+
+      {open && (
+        <div
+          id="discover-browse-options"
+          role="dialog"
+          aria-label="Discover options"
+          className="quiet-scroll animate-[ct-tick_180ms_var(--ease-sheet)_both] absolute right-0 top-[calc(100%+6px)] z-50 max-h-[min(70vh,460px)] w-[320px] max-w-[calc(100vw-32px)] origin-top-right overflow-y-auto border border-border bg-background p-4 shadow-[0_16px_48px_rgba(0,0,0,0.35)] sm:w-[380px]"
+        >
+          <section aria-labelledby="discover-sort-label" className="mb-4">
+            <div className="mb-2 border-b border-border pb-2">
+              <span id="discover-sort-label" className="rule-label">Sort by</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {SORTS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  aria-pressed={option.id === sort}
+                  onClick={() => onSort(option.id)}
+                  className={chipClass(option.id === sort)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section aria-labelledby="discover-genre-label">
+            <div className="mb-2 flex items-center justify-between gap-2 border-b border-border pb-2">
+              <span id="discover-genre-label" className="rule-label">Filter by genre</span>
+              {selectedGenre !== null && (
+                <button
+                  type="button"
+                  onClick={() => onSelectGenre(null)}
+                  className="press font-sans text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground underline underline-offset-4 hover:text-[var(--primary)]"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <button type="button" aria-pressed={selectedGenre === null} onClick={() => onSelectGenre(null)} className={chipClass(selectedGenre === null)}>
+                All genres
+              </button>
+              {genres.map((g) => (
+                <button key={g.id} type="button" aria-pressed={selectedGenre === g.id} onClick={() => onSelectGenre(selectedGenre === g.id ? null : g.id)} className={chipClass(selectedGenre === g.id)}>
+                  {g.name}
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /**
  * One For You shelf — a single category of suggestions. `items` is the pool the
  * shelf deals from; `load` pulls a further TMDb page for the same category when
@@ -295,120 +417,6 @@ function ShelfRow({
   )
 }
 
-function GenrePicker({
-  genres,
-  selected,
-  onSelect,
-}: {
-  genres: { id: number; name: string }[]
-  selected: number | null
-  onSelect: (id: number | null) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const wrap = useRef<HTMLDivElement>(null)
-  const triggerRef = useRef<HTMLButtonElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const focusFrame = requestAnimationFrame(() => wrap.current?.querySelector<HTMLButtonElement>('#discover-genre-filter button:not(:disabled)')?.focus())
-    const onDown = (e: PointerEvent) => {
-      if (!wrap.current?.contains(e.target as Node)) setOpen(false)
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      setOpen(false)
-      triggerRef.current?.focus()
-    }
-    document.addEventListener('pointerdown', onDown)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      cancelAnimationFrame(focusFrame)
-      document.removeEventListener('pointerdown', onDown)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [open])
-
-  const selectedGenre = genres.find((g) => g.id === selected)
-
-  return (
-    <div className="relative z-30 shrink-0" ref={wrap}>
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        aria-controls="discover-genre-filter"
-        aria-label={`Genre filter${selectedGenre ? `: ${selectedGenre.name}` : ''}`}
-        className={`press shrink-0 whitespace-nowrap border px-3 py-1.5 font-sans text-[11px] font-medium uppercase tracking-[0.14em] transition-colors duration-200 ${
-          selected !== null || open
-            ? 'border-[var(--primary)] bg-[var(--primary)] text-primary-foreground font-semibold shadow-xs'
-            : 'border-border bg-card/50 text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground'
-        }`}
-      >
-        <span>{selectedGenre ? `Genre: ${selectedGenre.name}` : 'Genre'}</span>
-      </button>
-
-      {open && (
-        <div id="discover-genre-filter" role="dialog" aria-label="Filter by genre" className="quiet-scroll animate-[ct-tick_180ms_var(--ease-sheet)_both] absolute right-0 top-[calc(100%+6px)] z-50 max-h-[min(70vh,460px)] w-[320px] max-w-[calc(100vw-32px)] origin-top-right overflow-y-auto border border-border bg-background p-4 shadow-[0_16px_48px_rgba(0,0,0,0.35)] sm:w-[380px]">
-          <div className="mb-3 flex items-center justify-between border-b border-border pb-2">
-            <span className="rule-label">Filter by genre</span>
-            {selected !== null && (
-              <button
-                type="button"
-                onClick={() => {
-                  onSelect(null)
-                  setOpen(false)
-                  triggerRef.current?.focus()
-                }}
-                className="press font-sans text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground underline underline-offset-4 hover:text-[var(--primary)]"
-              >
-                Reset
-              </button>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            <button
-              type="button"
-              onClick={() => {
-                onSelect(null)
-                setOpen(false)
-                triggerRef.current?.focus()
-              }}
-              className={`press shrink-0 whitespace-nowrap border px-2.5 py-1.5 font-sans text-[11px] font-medium uppercase tracking-[0.14em] transition-colors ${
-                selected === null
-                  ? 'border-[var(--primary)] bg-[var(--primary)] text-primary-foreground'
-                  : 'border-border bg-card text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground'
-              }`}
-            >
-              All genres
-            </button>
-            {genres.map((g) => {
-              const isSelected = selected === g.id
-              return (
-                <button
-                  key={g.id}
-                  type="button"
-                  onClick={() => {
-                    onSelect(isSelected ? null : g.id)
-                    setOpen(false)
-                    triggerRef.current?.focus()
-                  }}
-                  className={`press shrink-0 whitespace-nowrap border px-2.5 py-1.5 font-sans text-[11px] font-medium uppercase tracking-[0.14em] transition-colors ${
-                    isSelected
-                      ? 'border-[var(--primary)] bg-[var(--primary)] text-primary-foreground'
-                      : 'border-border bg-card text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground'
-                  }`}
-                >
-                  {g.name}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
 
 export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number, seed?: TmdbTitle) => void }) {
   const { entries, get } = useLibrary()
@@ -571,6 +579,7 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
           next.push({
             key: 'from-library',
             title: 'From your shelf',
+            note: 'Recommendations inspired by the titles on your shelf.',
             items: libraryPicked,
             // A shuffle steps to the next seed, then walks that seed's later pages.
             load: (page, signal) => {
@@ -815,7 +824,6 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
         fullBleed
         titleClassName="text-[72px] sm:text-[88px]"
         headingLevel={1}
-        right={<SearchInput value={query} onChange={setQuery} className="w-56 md:w-72" />}
       />
 
       <div className="relative z-30 flex flex-wrap items-center justify-between gap-x-4 gap-y-3" role="group" aria-label="Discover modes">
@@ -836,29 +844,18 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
           ))}
         </div>
 
-        {(mode === 'movie' || mode === 'tv') && !searching && (
-          <div className="ml-auto flex flex-wrap items-center gap-1.5">
-            {SORTS.map((s) => (
-              <Chip
-                key={s.id}
-                active={sort === s.id}
-                onClick={() => setSort(s.id)}
-              >
-                {s.label}
-              </Chip>
-            ))}
-            {genres.length > 0 && (
-              <>
-                <span className="mx-1 h-3.5 w-px bg-border" aria-hidden />
-                <GenrePicker
-                  genres={genres}
-                  selected={genre}
-                  onSelect={setGenre}
-                />
-              </>
-            )}
-          </div>
-        )}
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          {(mode === 'movie' || mode === 'tv') && !searching && (
+            <BrowseOptionsDropdown
+              sort={sort}
+              onSort={setSort}
+              genres={genres}
+              selectedGenre={genre}
+              onSelectGenre={setGenre}
+            />
+          )}
+          <SearchInput value={query} onChange={setQuery} className="w-64 md:w-96" />
+        </div>
       </div>
 
       {searching && (

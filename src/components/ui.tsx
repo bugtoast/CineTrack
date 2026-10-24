@@ -737,21 +737,6 @@ export function SearchInput({
         focused ? 'border-[var(--primary)]' : 'border-border hover:border-[var(--foreground)]/20'
       } ${className ?? ''}`}
     >
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden
-        className={`shrink-0 transition-colors duration-200 ${focused ? 'text-[var(--primary)]' : 'text-muted-foreground group-hover:text-foreground'}`}
-      >
-        <circle cx="11" cy="11" r="6.5" />
-        <path d="M15.5 15.5L20 20" />
-      </svg>
       <input
         ref={inputRef}
         value={value}
