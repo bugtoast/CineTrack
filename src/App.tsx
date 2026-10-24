@@ -18,7 +18,7 @@ type Page = 'home' | 'discover' | 'library'
 const NAV: { id: Page; label: string; key: string }[] = [
   { id: 'home', label: 'Home', key: '1' },
   { id: 'discover', label: 'Discover', key: '2' },
-  { id: 'library', label: 'Library', key: '3' },
+  { id: 'library', label: 'Shelf', key: '3' },
 ]
 
 /** Shown modifier: ⌥ on Apple platforms, Alt everywhere else. */
@@ -174,7 +174,7 @@ export default function App() {
               <button
                 onClick={() => setSettingsOpen((v) => !v)}
                 aria-label="Open settings"
-                className="press group flex h-8 w-8 items-center justify-center border border-border text-secondary-foreground hover:border-[var(--foreground)] hover:bg-card hover:text-foreground"
+                className="press group flex h-8 w-8 items-center justify-center text-secondary-foreground transition-colors hover:text-foreground"
               >
               <svg
                 width="15"
@@ -270,7 +270,7 @@ function Footer({
               : persistenceState === 'error'
                 ? 'Database unavailable'
                 : persistenceState === 'loading'
-                  ? 'Loading local collection'
+                  ? 'Loading local shelf'
                   : 'Saving to this device'}
           </p>
         </div>

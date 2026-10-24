@@ -482,7 +482,7 @@ export const Poster = memo(function Poster({
   animate?: boolean
   eager?: boolean
   movieLabel?: string
-  /** Richer card hover used by the Library shelf. */
+  /** Richer card hover used by the Shelf shelf. */
   hoverLift?: boolean
 }) {
   const { settings } = useSettings()
@@ -582,8 +582,8 @@ export const Poster = memo(function Poster({
           ) : (
             <button
               type="button"
-              aria-label={`Add ${titleOf(item)} to library`}
-              title="Add to library"
+              aria-label={`Add ${titleOf(item)} to shelf`}
+              title="Add to shelf"
               onClick={(e) => {
                 e.stopPropagation()
                 try {
@@ -594,7 +594,7 @@ export const Poster = memo(function Poster({
                     status: settings.defaultStatus,
                     totalEpisodes: (item as unknown as { number_of_episodes?: number | null }).number_of_episodes ?? null,
                   })
-                  toast(`Added ${titleOf(item)} to library`, 'success')
+                  toast(`Added ${titleOf(item)} to shelf`, 'success')
                   if (settings.openAfterAdd) onOpen(type, item.id, item)
                 } catch (err) {
                   console.error(err)

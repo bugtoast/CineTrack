@@ -53,14 +53,14 @@ function About() {
       </p>
       <H>What it does</H>
       <p>
-        Search The Movie Database for any title, accession it to your library, and record status, personal ratings, and
+        Search The Movie Database for any title, accession it to your shelf, and record status, personal ratings, and
         the dates you watched. Series carry full season-and-episode state; every title supports a running rewatch log.
         A discovery feed suggests new titles based on what you have already enjoyed.
       </p>
       <H>Where your data lives</H>
       <p>
-        Everything you record is stored locally on your device. There is no remote account or third-party server holding your library.
-        You can export your collection as a JSON file from Settings.
+        Everything you record is stored locally on your device. There is no remote account or third-party server holding your shelf.
+        You can export your shelf as a JSON file from Settings.
       </p>
     </>
   )
@@ -74,7 +74,7 @@ function Privacy() {
       </p>
       <H>Data stored locally</H>
       <p>
-        Your library — titles, ratings, watch dates, episode progress, rewatches — and your preferences stay on your own device.
+        Your shelf — titles, ratings, watch dates, episode progress, rewatches — and your preferences stay on your own device.
         This data never leaves your machine unless you explicitly export it.
       </p>
       <H>Third-party requests</H>
@@ -84,10 +84,10 @@ function Privacy() {
         third-party trackers.
       </p>
       <H>Cookies</H>
-      <p>CineTrack sets no cookies. Your library and preferences are stored locally on your device.</p>
+      <p>CineTrack sets no cookies. Your shelf and preferences are stored locally on your device.</p>
       <H>Your control</H>
       <p>
-        You may export or erase your entire library from Settings at any time.
+        You may export or erase your entire shelf from Settings at any time.
       </p>
     </>
   )

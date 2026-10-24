@@ -47,7 +47,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
               </button>
             </div>
             <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
-              Error ID: <span className="font-sans">{this.state.errorId}</span>. If this keeps happening, export your library from Settings before contacting support.
+              Error ID: <span className="font-sans">{this.state.errorId}</span>. If this keeps happening, export your shelf from Settings before contacting support.
             </p>
           </div>
         </div>

@@ -10,7 +10,7 @@ import MastheadName from './MastheadName'
 const MonthlyChart = lazy(() => import('./MonthlyChart'))
 const TITLE_STOP_WORDS = new Set(['a', 'an', 'and', 'of', 'the'])
 
-// ponytail: title tokens approximate franchise membership; use collection IDs if the library stores them.
+// ponytail: title tokens approximate franchise membership; use shelf IDs if the library stores them.
 function titleWords(title: string) {
   return [...new Set((title.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).filter((word) => !TITLE_STOP_WORDS.has(word)))]
 }
@@ -99,7 +99,7 @@ export default function Home({
 
           {/* Masthead keeps the full archive name to two balanced lines. */}
           <h1 className="mt-3 w-full max-w-full font-display text-[clamp(22px,6.2vw,92px)] leading-[0.95] tracking-tight">
-            <MastheadName name={settings.archiveName} italicWordIndex={settings.archiveItalicWordIndex} />
+            <MastheadName name={settings.archiveName} italicWordIndices={settings.archiveItalicWordIndices} />
           </h1>
         </div>
         <div className="mt-8 grid grid-cols-2 gap-y-8 sm:grid-cols-3 lg:grid-cols-6">

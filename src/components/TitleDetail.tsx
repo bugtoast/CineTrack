@@ -402,7 +402,7 @@ export default function TitleDetail({
                       >
                         <path d="M12 5v14M5 12h14" />
                       </svg>
-                      <span>Add to library</span>
+                      <span>Add to shelf</span>
                     </button>
                   ) : (
                     <>
@@ -665,7 +665,7 @@ export default function TitleDetail({
             const name = source ? titleOf(source) : 'Title'
             setConfirmDeaccession(false)
             remove(type, id)
-            toast(`Removed ${name} from your library`, 'info')
+            toast(`Removed ${name} from your shelf`, 'info')
             onClose()
           }}
         />
@@ -1751,7 +1751,7 @@ className="h-8 w-full border border-border bg-background px-2.5 font-sans text-[
                     <div className="flex h-[72px] w-12 shrink-0 items-center justify-center border border-border bg-card font-sans text-[8px] uppercase tracking-[0.1em] text-muted-foreground">No poster</div>
                   )}
                   <p className="max-w-[34ch] font-sans text-[10px] leading-relaxed text-muted-foreground">
-                    JPEG, PNG, or WebP · up to {MAX_CUSTOM_POSTER_FILE_BYTES / 1024 / 1024} MB. Saved posters are resized for the library.
+                    JPEG, PNG, or WebP · up to {MAX_CUSTOM_POSTER_FILE_BYTES / 1024 / 1024} MB. Saved posters are resized for the shelf.
                   </p>
                 </div>
                 {posterProcessing && <p className="mt-2 font-sans text-[10px] text-muted-foreground" aria-live="polite">Preparing poster…</p>}
@@ -2123,7 +2123,7 @@ function Seasons({
             onClick={onAdd}
             className="press font-sans text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--primary)] underline underline-offset-4"
           >
-            Add to library to track
+            Add to shelf to track
           </button>
         </div>
       )}

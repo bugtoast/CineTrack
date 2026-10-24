@@ -44,7 +44,7 @@ export type Settings = {
   shelfColumns: number
   includeAdult: boolean
   archiveName: string
-  archiveItalicWordIndex: number
+  archiveItalicWordIndices: number[]
   showNavHints: boolean
   defaultStatus: StartingStatus
   openAfterAdd: boolean
@@ -70,7 +70,7 @@ const DEFAULTS: Settings = {
   shelfColumns: 6,
   includeAdult: false,
   archiveName: DEFAULT_ARCHIVE_NAME,
-  archiveItalicWordIndex: -1,
+  archiveItalicWordIndices: [2],
   showNavHints: true,
   defaultStatus: 'planned',
   openAfterAdd: false,
@@ -108,11 +108,20 @@ function sanitize(s: Partial<Settings> & Record<string, unknown>): Settings {
   if (typeof s.archiveName === 'string') {
     out.archiveName = Array.from(s.archiveName).slice(0, ARCHIVE_NAME_MAX_LENGTH).join('')
   }
-  if (typeof s.archiveItalicWordIndex === 'number' && Number.isInteger(s.archiveItalicWordIndex) && s.archiveItalicWordIndex >= -1) {
-    out.archiveItalicWordIndex = Math.min(s.archiveItalicWordIndex, ARCHIVE_NAME_MAX_LENGTH - 1)
-  }
   const archiveWordCount = out.archiveName.trim().split(/\s+/).filter(Boolean).length
-  if (out.archiveItalicWordIndex >= archiveWordCount) out.archiveItalicWordIndex = archiveWordCount - 1
+  const legacyItalicIndex = typeof s.archiveItalicWordIndex === 'number' && Number.isInteger(s.archiveItalicWordIndex)
+    ? (s.archiveItalicWordIndex < 0 ? archiveWordCount - 1 : s.archiveItalicWordIndex)
+    : null
+  const italicIndices = Array.isArray(s.archiveItalicWordIndices)
+    ? s.archiveItalicWordIndices
+    : legacyItalicIndex == null
+      ? out.archiveItalicWordIndices
+      : [legacyItalicIndex]
+  out.archiveItalicWordIndices = archiveWordCount > 0
+    ? [...new Set(italicIndices
+      .filter((index): index is number => typeof index === 'number' && Number.isInteger(index) && index >= 0)
+      .map((index) => Math.min(index, archiveWordCount - 1)))]
+    : []
   if ((STARTING_STATUS_IDS as readonly string[]).includes(s.defaultStatus as string)) {
     out.defaultStatus = s.defaultStatus as StartingStatus
   }
@@ -141,7 +150,7 @@ function sanitize(s: Partial<Settings> & Record<string, unknown>): Settings {
  */
 let extraKeys: Record<string, unknown> = {}
 const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
-const RETIRED_KEYS = new Set(['chartStyle'])
+const RETIRED_KEYS = new Set(['chartStyle', 'archiveItalicWordIndex'])
 function stashExtras(s: Record<string, unknown>, opts?: { merge?: boolean }) {
   if (!opts?.merge) extraKeys = {}
   for (const [k, v] of Object.entries(s)) {

@@ -108,13 +108,11 @@ export default function Library({
   return (
     <div className="space-y-8">
       <SectionHead
-        title="Library"
+        title="Shelf"
         fullBleed
         headingLevel={1}
-        titleClassName="text-[56px] sm:text-[64px]"
-        right={
-          <SearchInput value={q} onChange={setQ} className="w-56 md:w-72" />
-        }
+        titleClassName="text-[72px] sm:text-[88px]"
+        right={<SearchInput value={q} onChange={setQ} className="w-56 md:w-72" />}
       />
 
       {/* Tabs + Filter */}
@@ -243,12 +241,27 @@ function FilterBar({
   const updatePosition = useCallback(() => {
     const trigger = triggerRef.current
     if (!trigger) return
+
     const rect = trigger.getBoundingClientRect()
     const viewportWidth = window.innerWidth
+    const viewportHeight = window.innerHeight
     const popoverWidth = Math.min(300, viewportWidth - 32)
     const left = Math.min(rect.right - popoverWidth, viewportWidth - popoverWidth - 16)
-    const top = rect.bottom + 8
-    setPopoverStyle({ left: `${Math.max(16, left)}px`, top: `${top}px` })
+    const desiredHeight = Math.min(boxRef.current?.scrollHeight ?? 520, 520, viewportHeight * 0.7)
+    const spaceBelow = Math.max(0, viewportHeight - rect.bottom - 24)
+    const spaceAbove = Math.max(0, rect.top - 24)
+    const placeAbove = desiredHeight > spaceBelow && spaceAbove > spaceBelow
+    const availableHeight = placeAbove ? spaceAbove : spaceBelow
+    const maxHeight = Math.min(520, viewportHeight * 0.7, availableHeight)
+    const panelHeight = Math.min(desiredHeight, maxHeight)
+    const top = placeAbove ? rect.top - panelHeight - 8 : rect.bottom + 8
+
+    setPopoverStyle({
+      left: `${Math.max(16, left) + window.scrollX}px`,
+      top: `${Math.max(8, top) + window.scrollY}px`,
+      maxHeight: `${maxHeight}px`,
+      transformOrigin: placeAbove ? 'bottom right' : 'top right',
+    })
   }, [])
 
   useEffect(
@@ -266,7 +279,7 @@ function FilterBar({
         raf2 = requestAnimationFrame(() => {
           setShown(true)
           updatePosition()
-          boxRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
+          boxRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true })
         })
       })
       const onKey = (e: KeyboardEvent) => {
@@ -284,14 +297,12 @@ function FilterBar({
       window.addEventListener('keydown', onKey, true)
       document.addEventListener('pointerdown', onPointerDown)
       window.addEventListener('resize', onResize)
-      window.addEventListener('scroll', onResize, true)
       return () => {
         cancelAnimationFrame(raf1)
         cancelAnimationFrame(raf2)
         window.removeEventListener('keydown', onKey, true)
         document.removeEventListener('pointerdown', onPointerDown)
         window.removeEventListener('resize', onResize)
-        window.removeEventListener('scroll', onResize, true)
       }
     }
     setShown(false)
@@ -308,9 +319,9 @@ function FilterBar({
       ref={boxRef}
       id="library-filter-popover"
       role="dialog"
-      aria-label="Filter library"
+      aria-label="Filter shelf"
       style={popoverStyle}
-      className="quiet-scroll animate-[ct-tick_180ms_var(--ease-sheet)_both] fixed z-[100] max-h-[min(70vh,520px)] w-[300px] max-w-[calc(100vw-32px)] origin-top-right overflow-y-auto border border-border bg-background p-4 shadow-[0_12px_40px_rgba(0,0,0,0.22)]"
+      className="quiet-scroll animate-[ct-tick_180ms_var(--ease-sheet)_both] absolute z-30 max-h-[min(70vh,520px)] w-[300px] max-w-[calc(100vw-32px)] origin-top-right overflow-y-auto border border-border bg-background p-4 shadow-[0_12px_40px_rgba(0,0,0,0.22)]"
     >
       <div className="rule-label mb-3 border-b border-border pb-2">
         {count} shown · sorted by {sortLabel}
@@ -385,7 +396,10 @@ function FilterBar({
         <button
           ref={triggerRef}
           type="button"
-          onClick={() => setOpen((o) => !o)}
+          onClick={() => {
+            if (!open) updatePosition()
+            setOpen((o) => !o)
+          }}
           aria-expanded={open}
           aria-controls="library-filter-popover"
           aria-label={`Filter shelf${activeCount ? `, ${activeCount} active` : ''}`}

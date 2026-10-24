@@ -570,7 +570,7 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
         if (libraryPicked.length >= 4 && topSeeds.length > 0) {
           next.push({
             key: 'from-library',
-            title: 'From your library',
+            title: 'From your shelf',
             items: libraryPicked,
             // A shuffle steps to the next seed, then walks that seed's later pages.
             load: (page, signal) => {
@@ -589,7 +589,7 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
             next.push({
               key: `genre-${genre.id}-${sort.label}`,
               title: `${sort.label} ${genre.name}`,
-              note: 'Beyond your library — something unlike the usual shelf.',
+              note: 'Beyond your shelf — something unlike the usual shelf.',
               items: picked,
               load: (page, signal) =>
                 discover('movie', {
@@ -813,7 +813,7 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
       <SectionHead
         title="Discover"
         fullBleed
-        titleClassName="text-[56px] sm:text-[64px]"
+        titleClassName="text-[72px] sm:text-[88px]"
         headingLevel={1}
         right={<SearchInput value={query} onChange={setQuery} className="w-56 md:w-72" />}
       />
@@ -893,7 +893,7 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
             </div>
           )}
           {!shelvesLoading && !shelvesError && shelves.length === 0 && (
-            <Empty>No suggestions yet — rate something in your library or try Trending</Empty>
+            <Empty>No suggestions yet — rate something in your shelf or try Trending</Empty>
           )}
           {shelves.map((s, idx) => (
             <div key={s.key} className="animate-fade" style={{ animationDelay: `${idx * 40}ms` }}>

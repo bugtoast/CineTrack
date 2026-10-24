@@ -1,5 +1,5 @@
-/** Shows a balanced two-line archive name with a user-selected italic word. */
-export default function MastheadName({ name, italicWordIndex = -1 }: { name: string; italicWordIndex?: number }) {
+/** Shows a balanced two-line archive name with user-selected highlighted words. */
+export default function MastheadName({ name, italicWordIndices = [] }: { name: string; italicWordIndices?: number[] }) {
   const words = name.trim().split(/\s+/).filter(Boolean)
   if (words.length === 0) return null
 
@@ -14,13 +14,13 @@ export default function MastheadName({ name, italicWordIndex = -1 }: { name: str
       smallestDifference = difference
     }
   }
-  const accentIndex = italicWordIndex < 0 ? words.length - 1 : Math.min(italicWordIndex, words.length - 1)
+  const accentIndices = new Set(italicWordIndices)
   const renderWords = (line: string[], startIndex: number) => line.map((word, index) => {
     const wordIndex = startIndex + index
     return (
       <span key={wordIndex}>
         {index > 0 && ' '}
-        {wordIndex === accentIndex ? <em className="text-[var(--primary)]">{word}</em> : word}
+        {accentIndices.has(wordIndex) ? <em className="text-[var(--primary)]">{word}</em> : word}
       </span>
     )
   })
