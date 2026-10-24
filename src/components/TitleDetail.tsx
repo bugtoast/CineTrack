@@ -582,6 +582,7 @@ export default function TitleDetail({
                     tracked={!!entry && (entry.status !== 'watched' || entry.rewatching)}
                     completed={entry?.status === 'watched'}
                     rewatching={!!entry?.rewatching}
+                    continueFromProgress={entry?.status === 'watching' || !!entry?.rewatching}
                     onAdd={() => add({ status: 'watching' })}
                     onToggle={(s, e) => toggleEpisode(id, s, e)}
                     onBulk={(s, nums, w) => setSeasonWatched(id, s, nums, w)}
@@ -2032,6 +2033,7 @@ function Seasons({
   tracked,
   completed,
   rewatching,
+  continueFromProgress,
   onAdd,
   onToggle,
   onBulk,
@@ -2042,6 +2044,7 @@ function Seasons({
   tracked: boolean
   completed: boolean
   rewatching: boolean
+  continueFromProgress: boolean
   onAdd: () => void
   onToggle: (s: number, e: number) => void
   onBulk: (s: number, nums: number[], watched: boolean) => void
@@ -2049,7 +2052,18 @@ function Seasons({
   const ordered = [...seasons].sort((a, b) =>
     a.season_number === 0 ? 1 : b.season_number === 0 ? -1 : a.season_number - b.season_number,
   )
-  const [open, setOpen] = useState<number>(ordered[0]?.season_number ?? 1)
+  const lastMarkedSeason = Object.entries(watched).reduce<{ season: number; at: number } | null>((latest, [key, at]) => {
+    const [seasonText, episodeText] = key.split('-')
+    const season = Number(seasonText)
+    const episode = Number(episodeText)
+    if (!Number.isSafeInteger(season) || !Number.isSafeInteger(episode) || !Number.isFinite(at)) return latest
+    return !latest || at > latest.at ? { season, at } : latest
+  }, null)?.season
+  const [open, setOpen] = useState<number>(
+    continueFromProgress && lastMarkedSeason != null && ordered.some((s) => s.season_number === lastMarkedSeason)
+      ? lastMarkedSeason
+      : ordered[0]?.season_number ?? 1,
+  )
   const [episodes, setEpisodes] = useState<Record<number, Episode[]>>({})
   const [loading, setLoading] = useState(false)
   const [seasonError, setSeasonError] = useState<string | null>(null)
