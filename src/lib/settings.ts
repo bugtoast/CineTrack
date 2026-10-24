@@ -35,6 +35,8 @@ export type Settings = {
   theme: ThemeId
   density: 'comfortable' | 'compact'
   hideSpoilers: boolean
+  blurEpisodeCovers: boolean
+  hideEpisodeCovers: boolean
   autoCompleteSeries: boolean
   posterMotion: boolean
   libraryColumns: number
@@ -59,6 +61,8 @@ const DEFAULTS: Settings = {
   theme: 'paper',
   density: 'comfortable',
   hideSpoilers: false,
+  blurEpisodeCovers: false,
+  hideEpisodeCovers: false,
   autoCompleteSeries: true,
   posterMotion: true,
   libraryColumns: 6,
@@ -94,6 +98,8 @@ function sanitize(s: Partial<Settings> & Record<string, unknown>): Settings {
   if (THEMES.some((t) => t.id === theme)) out.theme = theme as ThemeId
   if (s.density === 'comfortable' || s.density === 'compact') out.density = s.density
   out.hideSpoilers = !!s.hideSpoilers
+  out.hideEpisodeCovers = !!s.hideEpisodeCovers
+  out.blurEpisodeCovers = !!s.blurEpisodeCovers && !out.hideEpisodeCovers
   out.autoCompleteSeries = s.autoCompleteSeries !== false
   out.posterMotion = s.posterMotion !== false
   out.showNavHints = s.showNavHints !== false

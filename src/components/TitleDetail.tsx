@@ -2056,7 +2056,8 @@ function Seasons({
   const [seasonAttempt, setSeasonAttempt] = useState(0)
   const [confirmClear, setConfirmClear] = useState<number | null>(null)
   const fetchedRef = useRef<Set<number>>(new Set())
-  const hideDescriptions = useSettings().settings.hideSpoilers
+  const { settings } = useSettings()
+  const hideDescriptions = settings.hideSpoilers
   const { toast } = useToast()
 
   // Reset fetched set when show changes
@@ -2256,8 +2257,9 @@ function Seasons({
                         <span className="w-9 shrink-0 font-sans text-[11px] tabular-nums text-muted-foreground">
                           E{String(e.episode_number).padStart(2, '0')}
                         </span>
-                        <span className="relative hidden aspect-video w-[124px] shrink-0 overflow-hidden border border-border bg-muted sm:block">
-                          {img(e.still_path, 'w185') ? (
+                        {!settings.hideEpisodeCovers && (
+                          <span className="relative hidden aspect-video w-[124px] shrink-0 overflow-hidden border border-border bg-muted sm:block">
+                            {img(e.still_path, 'w185') ? (
                               <img
                                 src={img(e.still_path, 'w185')!}
                                 alt={`Still from ${e.name}`}
@@ -2265,14 +2267,15 @@ function Seasons({
                                 decoding="async"
                                 width={185}
                                 height={104}
-                                className={`h-full w-full object-cover transition-all ${done ? 'opacity-55' : ''}`}
+                                className={`h-full w-full object-cover transition-all ${done ? 'opacity-55' : ''} ${settings.blurEpisodeCovers ? 'scale-110 blur-sm' : ''}`}
                               />
-                          ) : (
-                            <span className="flex h-full items-center justify-center font-sans text-[9px] uppercase tracking-[0.12em] text-muted-foreground">
-                              No still
-                            </span>
-                          )}
-                        </span>
+                            ) : (
+                              <span className="flex h-full items-center justify-center font-sans text-[9px] uppercase tracking-[0.12em] text-muted-foreground">
+                                No still
+                              </span>
+                            )}
+                          </span>
+                        )}
                         <span className="min-w-0 flex-1">
                           <span className={`block text-[14px] ${done ? 'text-muted-foreground line-through' : ''}`}>
                             {e.name}

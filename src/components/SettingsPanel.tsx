@@ -349,6 +349,24 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
               value={settings.hideSpoilers}
               onChange={(v) => set('hideSpoilers', v)}
             />
+            <Toggle
+              label="Blur episode covers"
+              note="Blur still images in the episode list."
+              value={settings.blurEpisodeCovers}
+              onChange={(v) => {
+                if (v) set('hideEpisodeCovers', false)
+                set('blurEpisodeCovers', v)
+              }}
+            />
+            <Toggle
+              label="Hide episode covers"
+              note="Remove still images from the episode list."
+              value={settings.hideEpisodeCovers}
+              onChange={(v) => {
+                if (v) set('blurEpisodeCovers', false)
+                set('hideEpisodeCovers', v)
+              }}
+            />
           </Group>
 
           <Group title="Library defaults" note="Where the shelves open.">
