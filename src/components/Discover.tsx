@@ -29,17 +29,19 @@ function BrowseOptionsDropdown({
   genres,
   selectedGenre,
   onSelectGenre,
+  sortOptions = SORTS,
 }: {
   sort: string
   onSort: (value: string) => void
   genres: { id: number; name: string }[]
   selectedGenre: number | null
   onSelectGenre: (id: number | null) => void
+  sortOptions?: typeof SORTS
 }) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
-  const selectedSort = SORTS.find((option) => option.id === sort) ?? SORTS[0]
+  const selectedSort = sortOptions.find((option) => option.id === sort) ?? sortOptions[0]
   const selectedGenreName = genres.find((g) => g.id === selectedGenre)?.name
 
   useEffect(() => {
@@ -100,7 +102,7 @@ function BrowseOptionsDropdown({
               <span id="discover-sort-label" className="rule-label">Sort by</span>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {SORTS.map((option) => (
+              {sortOptions.map((option) => (
                 <button
                   key={option.id}
                   type="button"
@@ -421,7 +423,7 @@ function ShelfRow({
 export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number, seed?: TmdbTitle) => void }) {
   const { entries, get } = useLibrary()
   const { settings } = useSettings()
-  const [mode, setMode] = useState<Mode>('suggested')
+  const [mode, setMode] = useState<Mode>('trending')
   const [sort, setSort] = useState('popularity.desc')
   const [genre, setGenre] = useState<number | null>(null)
   const [genres, setGenres] = useState<{ id: number; name: string }[]>([])
@@ -484,9 +486,9 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
     return () => clearTimeout(t)
   }, [query])
 
-  // Load genres for movie/tv modes — use live flag to avoid stale set
+  // Load genres for movie/tv and trending modes — use live flag to avoid stale set
   useEffect(() => {
-    if (mode !== 'movie' && mode !== 'tv') return
+    if (mode !== 'movie' && mode !== 'tv' && mode !== 'trending') return
     const controller = new AbortController()
     let live = true
     genreList(type, { signal: controller.signal })
@@ -682,6 +684,20 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
   feedKeyRef.current = feedKey
   const cachedFeed = gridActive ? feedCacheRef.current.get(feedKey) : undefined
   const displayResults = activeFeedKey === feedKey ? results : cachedFeed?.results ?? []
+  const visibleResults = useMemo(() => {
+    if (mode !== 'trending') return displayResults
+    const filtered = genre === null
+      ? [...displayResults]
+      : displayResults.filter((item) => item.genre_ids?.includes(genre))
+    if (sort === 'vote_average.desc') {
+      filtered.sort((a, b) => b.vote_average - a.vote_average)
+    } else if (sort === 'primary_release_date.desc') {
+      filtered.sort((a, b) => (b.release_date ?? b.first_air_date ?? '').localeCompare(a.release_date ?? a.first_air_date ?? ''))
+    }
+    // Trending results arrive pre-ranked by TMDB popularity; revenue isn't
+    // included in the trending response, so those results retain that ranking.
+    return filtered
+  }, [displayResults, genre, mode, sort])
   const displayPage = activeFeedKey === feedKey ? page : cachedFeed?.page ?? 1
   const displayTotalPages = activeFeedKey === feedKey ? totalPages : cachedFeed?.totalPages ?? 1
   const displayError = activeFeedKey === feedKey ? error : null
@@ -828,7 +844,7 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
 
       <div className="relative z-30 flex flex-wrap items-center justify-between gap-x-4 gap-y-3" role="group" aria-label="Discover modes">
         <div className="flex flex-wrap items-center gap-2">
-          {(['suggested', 'trending', 'movie', 'tv'] as Mode[]).map((m) => (
+          {(['trending', 'suggested', 'movie', 'tv'] as Mode[]).map((m) => (
             <Chip
               key={m}
               active={mode === m && !searching}
@@ -845,13 +861,14 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
         </div>
 
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-          {(mode === 'movie' || mode === 'tv') && !searching && (
+          {(mode === 'movie' || mode === 'tv' || mode === 'trending') && !searching && (
             <BrowseOptionsDropdown
               sort={sort}
               onSort={setSort}
               genres={genres}
               selectedGenre={genre}
               onSelectGenre={setGenre}
+              sortOptions={mode === 'trending' ? SORTS.filter((option) => option.id !== 'revenue.desc') : SORTS}
             />
           )}
           <SearchInput value={query} onChange={setQuery} className="w-64 md:w-96" />
@@ -913,7 +930,7 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
               </button>
             </div>
           )}
-          {!gridLoading && !displayError && displayResults.length === 0 && <Empty>No records match — try a different search or clear filters</Empty>}
+          {!gridLoading && !displayError && visibleResults.length === 0 && <Empty>{mode === 'trending' && genre !== null ? 'No trending titles match this genre' : 'No records match — try a different search or clear filters'}</Empty>}
 
           <div aria-busy={gridLoading}>
             {showGridSkeletons && displayResults.length === 0 && !displayError && (
@@ -928,9 +945,9 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
               </PosterGrid>
             )}
 
-            {displayResults.length > 0 && (
+            {visibleResults.length > 0 && (
               <PosterGrid columns={settings.discoverColumns}>
-                {displayResults.map((item, i) => {
+                {visibleResults.map((item, i) => {
                   const t: MediaType = (item.media_type ?? type) as MediaType
                   const animate = activeFeedKey === feedKey && animatedRange !== null && i >= animatedRange.start && i < animatedRange.end
                   const row = Math.floor(i / gridColumns)
