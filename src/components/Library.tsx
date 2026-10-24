@@ -190,6 +190,7 @@ export default function Library({
                 }
                 entry={get(e.mediaType, e.id)}
                 onOpen={onOpen}
+                hoverLift
               />
             ))}
           </PosterGrid>

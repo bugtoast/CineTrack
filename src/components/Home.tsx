@@ -196,7 +196,7 @@ export default function Home({
                     <span className="min-w-0 flex-1 truncate font-sans text-[16px] transition-transform duration-300 group-hover:translate-x-1">
                       {a.entry.title}
                     </span>
-                    <span className="flex shrink-0 items-baseline gap-3 sm:gap-5">
+                    <span className="flex shrink-0 items-baseline gap-3 transition-transform duration-300 group-hover:-translate-x-1 sm:gap-5">
                       <span className="font-sans text-[10px] text-[var(--accent)]">{a.label}</span>
                       <span className="min-w-[3.5rem] text-right font-sans text-[10px] tabular-nums text-muted-foreground">
                         {settings.dateStyle === 'relative' ? formatRelativeDay(a.at) : formatDayMonth(a.at)}
@@ -245,24 +245,25 @@ export default function Home({
                     onClick={() => onOpen(e.mediaType, e.id)}
                     style={{ animationDelay: `${i * 60}ms` }}
                     aria-label={`Open ${e.title}`}
-                    className="group animate-rise mx-auto flex w-full max-w-[300px] flex-col text-left"
+                    className="group animate-rise mx-auto flex w-full max-w-[300px] flex-col text-left transition-transform duration-300 hover:-translate-y-1 focus-visible:-translate-y-1 motion-reduce:transform-none motion-reduce:transition-none"
                   >
-                    <span className="relative block aspect-[2/3] w-full overflow-hidden border border-border bg-card transition-colors group-hover:border-[var(--primary)] group-focus-visible:border-[var(--primary)]">
+                    <span className="relative block aspect-[2/3] w-full overflow-hidden border border-border bg-card shadow-none transition-[border-color,box-shadow] duration-300 group-hover:border-[var(--primary)] group-hover:shadow-[0_10px_30px_rgba(0,0,0,0.22)] group-focus-visible:border-[var(--primary)]">
                       {(e.customPoster ?? img(e.poster, 'w500')) ? (
-                        <img src={(e.customPoster ?? img(e.poster, 'w500'))!} alt="" loading="lazy" decoding="async" width={300} height={450} className="h-full w-full object-contain transition-opacity duration-300 group-hover:opacity-90" />
+                        <img src={(e.customPoster ?? img(e.poster, 'w500'))!} alt="" loading="lazy" decoding="async" width={300} height={450} className="h-full w-full object-contain transition-[filter,opacity] duration-500 group-hover:brightness-110 group-hover:saturate-110" />
                       ) : (
                         <span className="flex h-full w-full items-center justify-center font-display text-4xl text-muted-foreground">
                           {e.title.slice(0, 1)}
                         </span>
                       )}
-                      <span className="absolute left-2 top-2 border border-border bg-background/90 px-1.5 py-1 font-sans text-[9px] tabular-nums text-muted-foreground">
+                      <span className="pointer-events-none absolute inset-0 bg-gradient-to-t from-background/40 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-visible:opacity-100" />
+                      <span className="absolute left-2 top-2 border border-border bg-background/90 px-1.5 py-1 font-sans text-[9px] tabular-nums text-muted-foreground transition-colors duration-300 group-hover:border-[var(--primary)] group-hover:text-[var(--primary)]">
                         0{i + 1}
                       </span>
                     </span>
-                    <span className="mt-3 line-clamp-2 font-sans text-[13px] leading-tight transition-colors group-hover:text-[var(--primary)] sm:text-[15px]">
+                    <span className="mt-3 line-clamp-2 font-sans text-[13px] leading-tight transition-colors duration-300 group-hover:text-[var(--primary)] sm:text-[15px]">
                       {e.title}
                     </span>
-                    <span className="rule-label mt-1.5">
+                    <span className="rule-label mt-1.5 transition-colors duration-300 group-hover:text-foreground">
                       {e.mediaType === 'movie' ? 'Film' : 'Series'} <span className="px-1 text-border">/</span> {e.year || '—'}
                     </span>
                   </button>
@@ -388,7 +389,7 @@ function ActivityModal({
                 <span className="min-w-0 flex-1 truncate font-sans text-[14px] transition-transform duration-300 group-hover:translate-x-1 sm:text-[15px]">
                   {item.entry.title}
                 </span>
-                <span className="flex shrink-0 items-baseline gap-3 sm:gap-5">
+                <span className="flex shrink-0 items-baseline gap-3 transition-transform duration-300 group-hover:-translate-x-1 sm:gap-5">
                   <span className="font-sans text-[10px] text-[var(--accent)]">{item.label}</span>
                   <time dateTime={new Date(item.at).toISOString()} className="min-w-[3.5rem] text-right font-sans text-[10px] tabular-nums text-muted-foreground">
                     {dateStyle === 'relative' ? formatRelativeDay(item.at) : formatDayMonth(item.at)}

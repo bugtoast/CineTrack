@@ -472,6 +472,7 @@ export const Poster = memo(function Poster({
   animate = true,
   eager = false,
   movieLabel = 'Film',
+  hoverLift = false,
 }: {
   item: TmdbTitle
   entry?: Entry
@@ -481,6 +482,8 @@ export const Poster = memo(function Poster({
   animate?: boolean
   eager?: boolean
   movieLabel?: string
+  /** Richer card hover used by the Library shelf. */
+  hoverLift?: boolean
 }) {
   const { settings } = useSettings()
   // Posters receive their entry from the shelf parent. Avoid subscribing each
@@ -518,8 +521,16 @@ export const Poster = memo(function Poster({
   }, [artPending])
 
   return (
-    <div style={style} className={`group select-none ${animate ? 'animate-plate' : ''}`}>
-      <div ref={art.targetRef} className="relative aspect-[2/3] w-full overflow-hidden border border-border bg-muted transition-colors duration-300 group-hover:border-[var(--foreground)]">
+    <div
+      style={style}
+      className={`group select-none ${animate ? 'animate-plate' : ''} ${hoverLift ? 'transition-transform duration-300 hover:-translate-y-1 focus-within:-translate-y-1 motion-reduce:transform-none motion-reduce:transition-none' : ''}`}
+    >
+      <div
+        ref={art.targetRef}
+        className={`relative aspect-[2/3] w-full overflow-hidden border border-border bg-muted transition-[border-color,box-shadow] duration-300 group-hover:border-[var(--foreground)] ${
+          hoverLift ? 'group-hover:border-[var(--primary)] group-hover:shadow-[0_10px_30px_rgba(0,0,0,0.22)]' : ''
+        }`}
+      >
         {art.hasArt && art.shouldLoad && art.status !== 'failed' && (
           <div
             className={`pointer-events-none absolute inset-0 transition-opacity duration-300 ease-out ${showArtLoader && artPending ? 'shimmer opacity-70' : 'bg-muted opacity-0'}`}
@@ -548,8 +559,8 @@ export const Poster = memo(function Poster({
               className={`h-full w-full object-cover transition-all duration-500 ease-out ${
                 art.status === 'ready' ? 'opacity-100' : 'opacity-0'
               } ${
-                settings.posterMotion ? 'group-hover:scale-[1.03]' : 'group-hover:opacity-85'
-              }`}
+                settings.posterMotion && !hoverLift ? 'group-hover:scale-[1.03]' : 'group-hover:opacity-85'
+              } ${hoverLift ? 'group-hover:brightness-110 group-hover:saturate-110' : ''}`}
             />
           ) : (
             <div aria-hidden="true" className="flex h-full items-center justify-center p-3 text-center font-sans text-xs text-muted-foreground">
@@ -557,6 +568,12 @@ export const Poster = memo(function Poster({
             </div>
           )}
         </button>
+        {hoverLift && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 bg-gradient-to-t from-background/35 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-within:opacity-100"
+          />
+        )}
         <div className="absolute left-2 top-2 z-10">
           {entry ? (
             <div className="pointer-events-none">
@@ -623,12 +640,12 @@ export const Poster = memo(function Poster({
         >
           {titleOf(item)}
         </span>
-        <span className="font-sans text-[10px] tabular-nums text-muted-foreground">
+        <span className={`font-sans text-[10px] tabular-nums text-muted-foreground ${hoverLift ? 'transition-colors duration-300 group-hover:text-foreground' : ''}`}>
           {yearOf(item) || '—'}
           {community && <span className="text-[var(--accent)]"> · ★ {community}</span>}
         </span>
       </button>
-      <div className="rule-label mt-0.5">{type === 'movie' ? movieLabel : 'Series'}</div>
+      <div className={`rule-label mt-0.5 ${hoverLift ? 'transition-colors duration-300 group-hover:text-foreground' : ''}`}>{type === 'movie' ? movieLabel : 'Series'}</div>
     </div>
   )
 })
