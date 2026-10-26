@@ -255,7 +255,6 @@ export default function Home({
                           {e.title.slice(0, 1)}
                         </span>
                       )}
-                      <span className="pointer-events-none absolute inset-0 bg-gradient-to-t from-background/40 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-visible:opacity-100" />
                       <span className="absolute left-2 top-2 border border-border bg-background/90 px-1.5 py-1 font-sans text-[9px] tabular-nums text-muted-foreground transition-colors duration-300 group-hover:border-[var(--primary)] group-hover:text-[var(--primary)]">
                         0{i + 1}
                       </span>

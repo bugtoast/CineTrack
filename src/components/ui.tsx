@@ -559,7 +559,7 @@ export const Poster = memo(function Poster({
               className={`h-full w-full object-cover transition-all duration-500 ease-out ${
                 art.status === 'ready' ? 'opacity-100' : 'opacity-0'
               } ${
-                settings.posterMotion && !hoverLift ? 'group-hover:scale-[1.03]' : 'group-hover:opacity-85'
+                settings.posterMotion && !hoverLift ? 'group-hover:scale-[1.03]' : ''
               } ${hoverLift ? 'group-hover:brightness-110 group-hover:saturate-110' : ''}`}
             />
           ) : (
@@ -568,12 +568,6 @@ export const Poster = memo(function Poster({
             </div>
           )}
         </button>
-        {hoverLift && (
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 bg-gradient-to-t from-background/35 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-within:opacity-100"
-          />
-        )}
         <div className="absolute left-2 top-2 z-10">
           {entry ? (
             <div className="pointer-events-none">
