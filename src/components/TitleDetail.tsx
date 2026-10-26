@@ -26,7 +26,7 @@ import {
 import { canSetDropped, statusOptionsFor, statusTransition } from '../lib/status'
 import { MAX_CUSTOM_POSTER_FILE_BYTES, prepareCustomPoster } from '../lib/custom-poster'
 import { useSettings } from '../lib/settings'
-import { CarouselNav, ConfirmDialog, Spinner, STATUS_BADGE, STATUS_INACTIVE, STATUS_STYLE, handleRadioGroupKeyDown, useBodyScrollLock, useFocusTrap, usePosterArt, useTimedTooltip } from './ui'
+import { CarouselNav, CloseButton, ConfirmDialog, Spinner, STATUS_BADGE, STATUS_INACTIVE, STATUS_STYLE, handleRadioGroupKeyDown, useBodyScrollLock, useFocusTrap, usePosterArt, useTimedTooltip } from './ui'
 import { useToast } from './Toast'
 import CastDetail from './CastDetail'
 
@@ -258,13 +258,7 @@ export default function TitleDetail({
       >
         <header className="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-4 border-b border-border bg-background px-6 py-3">
           <span className="rule-label">{type === 'movie' ? 'Film' : 'Series'} · Title details</span>
-          <button
-            onClick={onClose}
-            className="press flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
-            aria-label="Close"
-          >
-            <CloseIcon />
-          </button>
+          <CloseButton onClick={onClose} label="Close title details" />
         </header>
 
         <div className="quiet-scroll min-h-0 flex-1 overflow-y-auto">
@@ -782,14 +776,6 @@ function CheckIcon() {
   )
 }
 
-function CloseIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M18 6 6 18M6 6l12 12" />
-    </svg>
-  )
-}
-
 function RewatchIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -959,13 +945,7 @@ setShown(false)
             <span className="rule-label block text-[var(--primary)] text-[10px]">Status</span>
             <span className="mt-0.5 block truncate font-display text-[18px] leading-tight">{title}</span>
           </div>
-          <button
-            onClick={close}
-            className="press flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
-            aria-label="Close"
-          >
-            <CloseIcon />
-          </button>
+          <CloseButton onClick={close} label="Close status options" />
         </header>
 
         <div className="space-y-2.5 p-3.5">
@@ -1385,14 +1365,7 @@ function EditModal({
             <span className="rule-label block text-[var(--primary)] text-[10px]">Edit metadata</span>
             <span className="mt-0.5 block truncate font-display text-[18px] leading-tight">{customTitle || title}</span>
           </div>
-          <button
-            type="button"
-            onClick={close}
-            className="press flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
-            aria-label="Close editor"
-          >
-            <CloseIcon />
-          </button>
+          <CloseButton onClick={close} label="Close editor" />
         </header>
 
         <div className="quiet-scroll min-h-0 flex-1 space-y-4 overflow-y-auto px-4.5 py-3.5">
@@ -1831,13 +1804,7 @@ function RewatchModal({
             </span>
             <span className="mt-0.5 block truncate font-display text-[18px] leading-tight">{title}</span>
           </div>
-          <button
-            onClick={close}
-            className="press flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
-            aria-label="Close rewatch log"
-          >
-            <CloseIcon />
-          </button>
+          <CloseButton onClick={close} label="Close rewatch log" />
         </header>
 
         <div className="quiet-scroll min-h-0 flex-1 overflow-y-auto px-4.5 py-3.5">

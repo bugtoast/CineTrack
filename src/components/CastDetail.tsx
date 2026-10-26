@@ -2,8 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { img, person, personCredits, type MediaType, type PersonCredit, type PersonDetail } from '../lib/tmdb'
 import { useSettings } from '../lib/settings'
-import { useFocusTrap } from './ui'
-import { Spinner } from './ui'
+import { CloseButton, Spinner, useFocusTrap } from './ui'
 
 const creditTitle = (c: PersonCredit) => c.title ?? c.name ?? 'Untitled'
 /** First billed role only — full slash-lists ("A / B / C (Voice)") blow out rows. */
@@ -123,16 +122,7 @@ export default function CastDetail({
             <span className="rule-label block text-[var(--primary)] text-[10px]">Cast file</span>
             <span className="mt-0.5 block truncate font-display text-[18px] leading-tight">{data?.name ?? '…'}</span>
           </div>
-          <button
-            type="button"
-            onClick={close}
-            className="press flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
-            aria-label="Close cast file"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
+          <CloseButton onClick={close} label="Close cast file" />
         </header>
 
         <div className="quiet-scroll min-h-0 flex-1 overflow-y-auto px-4.5 py-4">

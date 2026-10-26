@@ -1020,3 +1020,16 @@ export function ConfirmDialog({
     container ?? document.body,
   )
 }
+
+export function CloseButton({ onClick, label = 'Close' }: { onClick: () => void; label?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="press inline-flex h-8 shrink-0 items-center justify-center border border-border bg-background px-3 font-sans text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground transition-colors hover:border-[var(--foreground)] hover:text-foreground"
+    >
+      Close
+    </button>
+  )
+}

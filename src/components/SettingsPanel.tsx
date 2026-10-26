@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ARCHIVE_NAME_MAX_LENGTH, DEFAULT_ARCHIVE_NAME, LANGUAGES, THEMES, useSettings } from '../lib/settings'
 import { loggedEpisodeCount, MAX_LIBRARY_FILE_BYTES, minutesWatched, parseLibraryImport, useLibrary } from '../lib/library'
-import { ConfirmDialog, Chip, SETTINGS_PANEL_ID, handleRadioGroupKeyDown, useBodyScrollLock, useFocusTrap } from './ui'
+import { Chip, CloseButton, ConfirmDialog, SETTINGS_PANEL_ID, handleRadioGroupKeyDown, useBodyScrollLock, useFocusTrap } from './ui'
 import { useToast } from './Toast'
 
 export default function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -123,15 +123,7 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
       >
         <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/95 px-6 py-3 backdrop-blur">
           <span className="rule-label">Settings · Archive preferences</span>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            className="press flex h-8 w-8 items-center justify-center bg-background text-muted-foreground hover:text-foreground"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
+          <CloseButton onClick={onClose} label="Close settings" />
         </header>
 
         <div className="divide-y divide-border">

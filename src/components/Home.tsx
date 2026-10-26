@@ -4,7 +4,7 @@ import { img, type MediaType, type TmdbTitle } from '../lib/tmdb'
 import { countRewatches, formatDayMonth, formatRelativeDay, minutesWatched, progress, recentCompletions, useLibrary, watchedCount } from '../lib/library'
 import { useSettings } from '../lib/settings'
 import type { LibraryView } from './Library'
-import { Empty, SectionHead, Stat, useBodyScrollLock, useFocusTrap } from './ui'
+import { CloseButton, Empty, SectionHead, Stat, useBodyScrollLock, useFocusTrap } from './ui'
 import MastheadName from './MastheadName'
 
 const MonthlyChart = lazy(() => import('./MonthlyChart'))
@@ -367,16 +367,7 @@ function ActivityModal({
             <span className="rule-label block text-[var(--primary)] text-[10px]">Viewing ledger · {items.length} {items.length === 1 ? 'entry' : 'entries'}</span>
             <h2 id="activity-modal-title" className="mt-0.5 truncate font-display text-[20px] leading-tight">Activity</h2>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="press flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
-            aria-label="Close activity"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
+          <CloseButton onClick={onClose} label="Close activity" />
         </header>
         <ol className="quiet-scroll min-h-0 flex-1 divide-y divide-border overflow-y-auto px-4.5">
           {items.map((item, index) => (
