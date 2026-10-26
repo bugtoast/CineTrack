@@ -71,7 +71,6 @@ export default function TitleDetail({
   const [rewatchOpen, setRewatchOpen] = useState(false)
   const [pendingStatus, setPendingStatus] = useState<Status | null>(null)
   const [confirmDeaccession, setConfirmDeaccession] = useState(false)
-  const [synopsisOpen, setSynopsisOpen] = useState(false)
   const [tvView, setTvView] = useState<'seasons' | 'cast'>('seasons')
   const [personId, setPersonId] = useState<number | null>(null)
   const [panelEl, setPanelEl] = useState<HTMLDivElement | null>(null)
@@ -257,14 +256,12 @@ export default function TitleDetail({
         role="dialog"
         aria-modal="true"
         aria-label={source ? `${entry?.title || titleOf(source)} — catalogue entry` : 'Catalogue entry'}
-        className="drawer-sheet relative flex h-full w-full max-w-[920px] flex-col overflow-hidden bg-background"
+        className="drawer-sheet relative flex h-full w-full max-w-[920px] flex-col overflow-hidden border-l border-border bg-background shadow-[-20px_0_48px_rgba(0,0,0,0.24)]"
         data-open={shown}
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-border bg-background px-6 py-3">
-          <span className="rule-label">
-            Catalogue entry · {type === 'movie' ? 'Film' : 'Series'} · #{id}
-          </span>
+        <header className="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-4 border-b border-border bg-background px-6 py-3">
+          <span className="rule-label">{type === 'movie' ? 'Film' : 'Series'} · Title details</span>
           <button
             onClick={onClose}
             className="press flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
@@ -311,21 +308,21 @@ export default function TitleDetail({
                 </button>
               </div>
             )}
-            <div className="grid gap-8 px-6 pb-5 pt-7 lg:grid-cols-[190px_1fr]">
-              <div>
+            <div className="grid gap-8 px-6 pb-5 pt-7 lg:grid-cols-[230px_1fr] lg:grid-rows-[345px]">
+              <div className="lg:h-[345px] lg:min-h-0">
                 {heroArt.status === 'ready' || heroArt.status === 'loading' ? (
                   <img
                     ref={heroArt.elRef}
                     src={heroArt.src!}
                     srcSet={heroArt.srcSet}
-                    sizes="(max-width: 1024px) 190px, 190px"
+                    sizes="(max-width: 1024px) 230px, 230px"
                     alt={`Poster for ${entry?.title || titleOf(source)}`}
                     width={342}
                     height={513}
                     decoding="async"
                     onLoad={heroArt.onLoad}
                     onError={heroArt.onError}
-                    className={`animate-plate w-full border border-border bg-muted ${
+                    className={`animate-plate h-full w-full border border-border bg-muted object-cover ${
                       heroArt.status === 'loading' ? 'opacity-0' : 'opacity-100'
                     }`}
                   />
@@ -338,7 +335,7 @@ export default function TitleDetail({
                 )}
               </div>
 
-              <div className="animate-rise relative flex flex-col [animation-delay:80ms] lg:h-[285px] lg:min-h-0">
+              <div className="animate-rise relative flex flex-col [animation-delay:80ms] lg:h-[345px] lg:min-h-0">
                 <h1 className="line-clamp-2 min-h-[2.75rem] overflow-hidden font-display text-[42px] leading-[1.05] tracking-tight">{entry?.title || titleOf(source)}</h1>
                 <p className="mt-1 h-4 truncate font-sans text-[11px] tracking-[0.14em] text-muted-foreground">
                   {metaParts.map((part, idx) => (
@@ -360,19 +357,10 @@ export default function TitleDetail({
                     </span>
                   ))}
                 </p>
-                <div className="relative mt-2 h-28 max-w-prose">
-                  <p className="h-full overflow-hidden text-[14px] leading-relaxed text-secondary-foreground [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:5]">
+                <div className="relative mt-2 min-h-0 max-w-prose flex-1 overflow-hidden">
+                  <p className="h-full overflow-hidden text-[14px] leading-relaxed text-secondary-foreground">
                     {source.overview || 'No synopsis on file.'}
                   </p>
-                  {(source.overview?.trim().split(/\s+/).length ?? 0) > 28 && (
-                    <button
-                      type="button"
-                      onClick={() => setSynopsisOpen(true)}
-                      className="press absolute bottom-0 right-0 bg-gradient-to-l from-background via-background to-transparent pl-8 font-sans text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--primary)] transition-colors hover:text-foreground"
-                    >
-                      More
-                    </button>
-                  )}
                 </div>
                 {entry?.note && (
                   <div className="mt-1 h-12 overflow-hidden border-l-2 border-[var(--primary)] bg-card/60 px-3.5 py-1">
@@ -383,7 +371,7 @@ export default function TitleDetail({
 
                 {/* Control row — mirrors the reference: status · rating · date, then actions.
                     mt-auto floats it to the bottom edge of the poster beside it. */}
-                <div className="mt-auto flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-border pt-4 lg:absolute lg:inset-x-0 lg:bottom-0 lg:mt-0 lg:flex-nowrap lg:items-end lg:pt-4">
+                <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-border pt-4 lg:absolute lg:inset-x-0 lg:bottom-0 lg:mt-0 lg:flex-nowrap lg:items-end">
                   {!entry ? (
                     <button
                       onClick={() => add({ status: settings.defaultStatus })}
@@ -628,10 +616,6 @@ export default function TitleDetail({
           />
         )}
 
-        {synopsisOpen && source?.overview && (
-          <SynopsisModal text={source.overview} title={entry?.title || titleOf(source)} onClose={() => setSynopsisOpen(false)} />
-        )}
-
         <ConfirmDialog
           open={pendingStatus !== null}
           container={panelEl}
@@ -675,58 +659,6 @@ export default function TitleDetail({
 }
 
 /* ---------- shared bits ---------- */
-
-function SynopsisModal({ text, title, onClose }: { text: string; title: string; onClose: () => void }) {
-  const dialogRef = useRef<HTMLDivElement | null>(null)
-  useBodyScrollLock(true)
-  useFocusTrap(dialogRef)
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      event.stopPropagation()
-      onClose()
-    }
-    window.addEventListener('keydown', onKeyDown, true)
-    return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [onClose])
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-[rgba(20,19,15,0.68)] p-4"
-      onClick={onClose}
-    >
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="full-synopsis-title"
-        className="modal-sheet flex max-h-[min(70vh,520px)] w-full max-w-[560px] flex-col border border-border bg-background shadow-[0_30px_90px_-20px_rgba(0,0,0,0.65)]"
-        data-open="true"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-3">
-          <div className="min-w-0">
-            <span className="rule-label block text-[10px] text-[var(--primary)]">Full synopsis</span>
-            <h2 id="full-synopsis-title" className="truncate font-display text-[19px] leading-tight">{title}</h2>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="press flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
-            aria-label="Close synopsis"
-          >
-            <CloseIcon />
-          </button>
-        </header>
-        <div className="quiet-scroll min-h-0 overflow-y-auto px-5 py-4">
-          <p className="font-sans text-[14px] leading-relaxed text-secondary-foreground">{text}</p>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  )
-}
 
 function Panel({ title, right, children }: { title: string; right?: React.ReactNode; children: React.ReactNode }) {
   return (
