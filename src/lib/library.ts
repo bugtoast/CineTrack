@@ -537,7 +537,7 @@ export function useLibrary(subscribeToStore = true) {
   const addRewatch = useCallback((type: MediaType, id: number, at?: number) => {
     const key = entryKey(type, id)
     const entry = cache[key]
-    if (!entry || (type === 'tv' && entry.rewatching)) return
+    if (!entry || !canLogRewatch(entry)) return
     const stamp = at ?? Date.now()
     if (!isValidTimestamp(stamp)) return
     const rewatches = [...(entry.rewatches ?? []), stamp].sort((a, b) => a - b).slice(-MAX_REWATCHES)
@@ -751,6 +751,50 @@ export function progress(e: Entry) {
 export function loggedEpisodeCount(e: Entry): number {
   if (e.mediaType !== 'tv') return 0
   return watchedCount(e) + (e.rewatches.length * (e.totalEpisodes ?? 0)) + Object.keys(e.rewatchEpisodes).length
+}
+
+/**
+ * Whether the title has been completed at least once (watched).
+ * - Film: status must be 'watched'.
+ * - Series: status must be 'watched', or all known episodes have been watched.
+ */
+export function isCompletedAtLeastOnce(entry: Entry | null | undefined): boolean {
+  if (!entry) return false
+  if (entry.mediaType === 'movie') {
+    return entry.status === 'watched'
+  }
+  if (entry.status === 'watched') return true
+  const total = entry.totalEpisodes
+  if (typeof total === 'number' && Number.isSafeInteger(total) && total > 0) {
+    return watchedCount(entry) >= total
+  }
+  return false
+}
+
+/**
+ * Whether a rewatch can currently be logged manually for this title.
+ * Requires having completed the title at least once, and not being in an active episodic TV rewatch.
+ */
+export function canLogRewatch(entry: Entry | null | undefined): boolean {
+  if (!entry || !isCompletedAtLeastOnce(entry)) return false
+  if (entry.mediaType === 'tv' && entry.rewatching) return false
+  return true
+}
+
+/**
+ * Explanatory reason when manual rewatch logging is unavailable.
+ */
+export function rewatchLockedReason(entry: Entry | null | undefined): string | null {
+  if (!entry) return null
+  if (!isCompletedAtLeastOnce(entry)) {
+    return entry.mediaType === 'movie'
+      ? 'Mark this film as watched to log a rewatch.'
+      : 'Complete the series to log a rewatch.'
+  }
+  if (entry.mediaType === 'tv' && entry.rewatching) {
+    return 'Finish the episode list to log this rewatch.'
+  }
+  return null
 }
 
 export function countRewatches(entries: Entry[]): number {

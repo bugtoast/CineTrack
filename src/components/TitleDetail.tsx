@@ -13,9 +13,12 @@ import {
   type TmdbTitle,
 } from '../lib/tmdb'
 import {
+  canLogRewatch,
   epKey,
   fromDateInput,
+  isCompletedAtLeastOnce,
   originalCompletionAt,
+  rewatchLockedReason,
   toDateInput,
   todayInput,
   useLibrary,
@@ -440,9 +443,19 @@ export default function TitleDetail({
                         </IconButton>
                         <IconButton
                           label="Rewatches"
-                          tooltip={entry.rewatches.length > 0 ? `Rewatches (${entry.rewatches.length})` : 'Rewatches'}
+                          tooltip={
+                            !isCompletedAtLeastOnce(entry)
+                              ? (type === 'movie' ? 'Complete film to log rewatch' : 'Complete series to log rewatch')
+                              : entry.rewatches.length > 0
+                                ? `Rewatches (${entry.rewatches.length})`
+                                : 'Rewatches'
+                          }
+                          disabled={!isCompletedAtLeastOnce(entry)}
                           active={entry.rewatches.length > 0}
-                          onClick={() => setRewatchOpen(true)}
+                          onClick={() => {
+                            if (!isCompletedAtLeastOnce(entry)) return
+                            setRewatchOpen(true)
+                          }}
                         >
                           <RewatchIcon />
                           {entry.rewatches.length > 0 && (
@@ -557,7 +570,7 @@ export default function TitleDetail({
                     seasons={data.seasons.filter((s) => s.episode_count > 0)}
                     watched={entry?.rewatching ? entry.rewatchEpisodes : entry?.episodes ?? {}}
                     tracked={!!entry && (entry.status !== 'watched' || entry.rewatching)}
-                    completed={entry?.status === 'watched'}
+                    completed={isCompletedAtLeastOnce(entry)}
                     rewatching={!!entry?.rewatching}
                     continueFromProgress={entry?.status === 'watching' || !!entry?.rewatching}
                     onAdd={() => add({ status: 'watching' })}
@@ -587,7 +600,6 @@ export default function TitleDetail({
           <RewatchModal
             title={source ? titleOf(source) : 'Entry'}
             entry={entry}
-            canManuallyLog={!entry.rewatching}
             onClose={() => setRewatchOpen(false)}
             onAddRewatch={(at) => addRewatch(type, id, at)}
             onSetRewatchDate={(i, at) => setRewatchDate(type, id, i, at)}
@@ -662,6 +674,7 @@ function IconButton({
   label,
   tooltip,
   active,
+  disabled = false,
   tone = 'default',
   onClick,
 }: {
@@ -669,6 +682,7 @@ function IconButton({
   label: string
   tooltip?: string | null
   active?: boolean
+  disabled?: boolean
   tone?: 'default' | 'danger'
   onClick: () => void
 }) {
@@ -679,6 +693,7 @@ function IconButton({
   return (
     <div
       className="relative"
+      tabIndex={disabled ? 0 : undefined}
       onMouseEnter={hoverTip.show}
       onMouseLeave={hoverTip.scheduleHide}
       onFocus={hoverTip.show}
@@ -686,18 +701,25 @@ function IconButton({
     >
       <button
         type="button"
+        disabled={disabled}
         onClick={() => {
+          if (disabled) return
           hoverTip.hide()
           onClick()
         }}
         aria-label={label}
         aria-pressed={active}
-        className={`press relative flex h-9 w-9 items-center justify-center border transition-colors ${
-          tone === 'danger'
-            ? 'border-[var(--destructive)]/40 bg-[var(--destructive)]/[0.06] text-[var(--destructive)] hover:border-[var(--destructive)] hover:bg-[var(--destructive)] hover:text-[var(--destructive-foreground)]'
-            : active
-              ? 'border-[var(--primary)] text-[var(--primary)]'
-              : 'border-border text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground'
+        aria-disabled={disabled}
+        className={`relative flex h-9 w-9 items-center justify-center border transition-colors ${
+          disabled
+            ? 'cursor-not-allowed border-border/40 text-muted-foreground/35 opacity-40'
+            : `press ${
+                tone === 'danger'
+                  ? 'border-[var(--destructive)]/40 bg-[var(--destructive)]/[0.06] text-[var(--destructive)] hover:border-[var(--destructive)] hover:bg-[var(--destructive)] hover:text-[var(--destructive-foreground)]'
+                  : active
+                    ? 'border-[var(--primary)] text-[var(--primary)]'
+                    : 'border-border text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground'
+              }`
         }`}
       >
         {children}
@@ -1733,7 +1755,6 @@ className="h-8 w-full border border-border bg-background px-2.5 font-sans text-[
 function RewatchModal({
   title,
   entry,
-  canManuallyLog,
   onClose,
   onAddRewatch,
   onSetRewatchDate,
@@ -1741,7 +1762,6 @@ function RewatchModal({
 }: {
   title: string
   entry: Entry
-  canManuallyLog: boolean
   onClose: () => void
   onAddRewatch: (at: number) => void
   onSetRewatchDate: (index: number, at: number) => void
@@ -1760,6 +1780,8 @@ function RewatchModal({
   // re-render were ever swallowed, so never rely solely on the entry prop.
   const { get } = useLibrary()
   const live = get(entry.mediaType, entry.id) ?? entry
+  const canManuallyLog = canLogRewatch(live)
+  const lockedReason = rewatchLockedReason(live)
 
   const close = useCallback(() => {
     setShown(false)
@@ -1881,7 +1903,7 @@ function RewatchModal({
               </button>
             </>
           ) : (
-            <p className="rule-label text-[10px]">Finish the episode list to log this rewatch.</p>
+            <p className="rule-label w-full text-center text-[10px] text-muted-foreground">{lockedReason}</p>
           )}
         </footer>
 
