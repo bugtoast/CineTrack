@@ -1672,17 +1672,29 @@ className="h-8 w-full border border-border bg-background px-2.5 font-sans text-[
         </div>
         </div>
 
-        <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-border px-4.5 py-3">
-          <span className="select-none font-sans text-[10px] tracking-[0.08em] text-muted-foreground/60" aria-hidden>
-            ⏎ to save
-          </span>
+        <footer className="flex shrink-0 items-center justify-end border-t border-border px-4.5 py-3">
           <button
             type="submit"
             title="Save (Enter)"
             disabled={posterProcessing}
-            className="press h-8 bg-[var(--primary)] px-5 font-sans text-[10px] font-medium uppercase tracking-[0.14em] text-primary-foreground hover:opacity-85 disabled:cursor-wait disabled:opacity-50"
+            className="press inline-flex h-8 items-center gap-2 bg-[var(--primary)] px-4 font-sans text-[10px] font-medium uppercase tracking-[0.14em] text-primary-foreground hover:opacity-85 disabled:cursor-wait disabled:opacity-50"
           >
-            Save
+            <span>Save</span>
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+              className="shrink-0"
+            >
+              <polyline points="9 10 4 15 9 20" />
+              <path d="M20 4v7a4 4 0 0 1-4 4H4" />
+            </svg>
           </button>
         </footer>
       </form>
