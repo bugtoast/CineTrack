@@ -73,7 +73,6 @@ export default function TitleDetail({
   const [confirmDeaccession, setConfirmDeaccession] = useState(false)
   const [tvView, setTvView] = useState<'seasons' | 'cast'>('seasons')
   const [personId, setPersonId] = useState<number | null>(null)
-  const [panelEl, setPanelEl] = useState<HTMLDivElement | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
   const closeTimer = useRef<number | null>(null)
   const { toast } = useToast()
@@ -249,10 +248,7 @@ export default function TitleDetail({
       onClick={onClose}
     >
       <div
-        ref={(el) => {
-          panelRef.current = el
-          setPanelEl(el)
-        }}
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label={source ? `${entry?.title || titleOf(source)} — catalogue entry` : 'Catalogue entry'}
@@ -406,7 +402,6 @@ export default function TitleDetail({
                             setRewatching(id, active)
                             toast(active ? 'Rewatch started' : 'Rewatch paused', 'info')
                           }}
-                          container={panelEl}
                           onChange={(s) => {
                             const transition = statusTransition(entry.status, s, entry.watchedAt)
                             // Resetting a logged series is destructive — confirm first.
@@ -589,7 +584,6 @@ export default function TitleDetail({
             entry={entry}
             source={source}
             seasons={data?.seasons}
-            container={panelEl}
             onClose={() => setEditing(false)}
             onUpsert={(patch) => upsert(type, id, patch)}
           />
@@ -599,7 +593,6 @@ export default function TitleDetail({
           <RewatchModal
             title={source ? titleOf(source) : 'Entry'}
             entry={entry}
-            container={panelEl}
             canManuallyLog={!entry.rewatching}
             onClose={() => setRewatchOpen(false)}
             onAddRewatch={(at) => addRewatch(type, id, at)}
@@ -618,7 +611,6 @@ export default function TitleDetail({
 
         <ConfirmDialog
           open={pendingStatus !== null}
-          container={panelEl}
           title="Start Over"
           message={
             <>
@@ -636,7 +628,6 @@ export default function TitleDetail({
 
         <ConfirmDialog
           open={confirmDeaccession}
-          container={panelEl}
           title="Delete Title"
           message={
             <>
@@ -886,7 +877,6 @@ function StatusModal({
   watchedEpisodeCount,
   rewatching,
   rewatchProgress,
-  container,
   onSelect,
   onToggleRewatch,
   onClose,
@@ -897,7 +887,6 @@ function StatusModal({
   watchedEpisodeCount: number
   rewatching: boolean
   rewatchProgress: number
-  container?: HTMLElement | null
   onSelect: (s: Status) => void
   onToggleRewatch: (active: boolean) => void
   onClose: () => void
@@ -949,7 +938,7 @@ setShown(false)
 
   const content = (
     <div
-      className={`modal-backdrop absolute inset-0 z-[60] flex items-center justify-center bg-[rgba(20,19,15,0.65)] p-4 ${shown ? '' : 'pointer-events-none'}`}
+      className={`modal-backdrop fixed inset-0 z-[60] flex items-center justify-center bg-[rgba(20,19,15,0.65)] p-4 ${shown ? '' : 'pointer-events-none'}`}
       data-open={shown}
       onClick={close}
       onWheel={(e) => e.stopPropagation()}
@@ -1050,8 +1039,7 @@ setShown(false)
     </div>
   )
 
-  if (!container) return null
-  return createPortal(content, container)
+  return createPortal(content, document.body)
 }
 
 function StatusButtons({
@@ -1061,7 +1049,6 @@ function StatusButtons({
   watchedEpisodeCount,
   rewatching,
   rewatchProgress,
-  container,
   onChange,
   onToggleRewatch,
 }: {
@@ -1071,7 +1058,6 @@ function StatusButtons({
   watchedEpisodeCount: number
   rewatching: boolean
   rewatchProgress: number
-  container?: HTMLElement | null
   onChange: (s: Status) => void
   onToggleRewatch: (active: boolean) => void
 }) {
@@ -1117,7 +1103,6 @@ function StatusButtons({
           watchedEpisodeCount={watchedEpisodeCount}
           rewatching={rewatching}
           rewatchProgress={rewatchProgress}
-          container={container}
           onToggleRewatch={onToggleRewatch}
           onSelect={(s) => {
             onChange(s)
@@ -1137,7 +1122,6 @@ function EditModal({
   entry,
   source,
   seasons,
-  container,
   onClose,
   onUpsert,
 }: {
@@ -1146,7 +1130,6 @@ function EditModal({
   entry: Entry
   source?: TmdbTitle | null
   seasons?: SeasonSummary[]
-  container?: HTMLElement | null
   onClose: () => void
   onUpsert: (patch: Partial<Entry>) => void
 }) {
@@ -1378,9 +1361,9 @@ function EditModal({
     [],
   )
 
-  return (
+  return createPortal((
     <div
-      className={`modal-backdrop absolute inset-0 z-[60] flex items-center justify-center bg-[rgba(20,19,15,0.65)] p-3 sm:p-4 ${shown ? '' : 'pointer-events-none'}`}
+      className={`modal-backdrop fixed inset-0 z-[60] flex items-center justify-center bg-[rgba(20,19,15,0.65)] p-3 sm:p-4 ${shown ? '' : 'pointer-events-none'}`}
       data-open={shown}
       onClick={close}
     >
@@ -1733,7 +1716,6 @@ className="h-8 w-full border border-border bg-background px-2.5 font-sans text-[
 
       <ConfirmDialog
         open={confirmResetProgress}
-        container={container}
         title="Start Over"
         message={<>Setting <strong className="text-foreground">{customTitle || title}</strong> to Planned will clear original and rewatch episode progress. This cannot be undone.</>}
         confirmLabel="Clear episodes"
@@ -1746,7 +1728,6 @@ className="h-8 w-full border border-border bg-background px-2.5 font-sans text-[
 
       <ConfirmDialog
         open={confirmDiscard}
-        container={container}
         title="Discard Changes"
         message="You have unsaved edits. Close without saving them?"
         confirmLabel="Discard"
@@ -1759,7 +1740,7 @@ className="h-8 w-full border border-border bg-background px-2.5 font-sans text-[
         }}
       />
     </div>
-  )
+  ), document.body)
 }
 
 /* ---------- rewatch log ---------- */
@@ -1767,7 +1748,6 @@ className="h-8 w-full border border-border bg-background px-2.5 font-sans text-[
 function RewatchModal({
   title,
   entry,
-  container,
   canManuallyLog,
   onClose,
   onAddRewatch,
@@ -1776,7 +1756,6 @@ function RewatchModal({
 }: {
   title: string
   entry: Entry
-  container?: HTMLElement | null
   canManuallyLog: boolean
   onClose: () => void
   onAddRewatch: (at: number) => void
@@ -1830,9 +1809,9 @@ function RewatchModal({
     [],
   )
 
-  return (
+  return createPortal((
     <div
-      className={`modal-backdrop absolute inset-0 z-[60] flex items-center justify-center bg-[rgba(20,19,15,0.65)] p-3 sm:p-4 ${shown ? '' : 'pointer-events-none'}`}
+      className={`modal-backdrop fixed inset-0 z-[60] flex items-center justify-center bg-[rgba(20,19,15,0.65)] p-3 sm:p-4 ${shown ? '' : 'pointer-events-none'}`}
       data-open={shown}
       onClick={close}
     >
@@ -1929,7 +1908,6 @@ function RewatchModal({
 
         <ConfirmDialog
           open={confirmIndex !== null}
-          container={container}
           title="Remove Rewatch"
           message="Are you sure you want to delete this logged rewatch date from your archive?"
           confirmLabel="Remove"
@@ -1944,7 +1922,7 @@ function RewatchModal({
         />
       </div>
     </div>
-  )
+  ), document.body)
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { img, person, personCredits, type MediaType, type PersonCredit, type PersonDetail } from '../lib/tmdb'
 import { useSettings } from '../lib/settings'
 import { useFocusTrap } from './ui'
@@ -102,9 +103,9 @@ export default function CastDetail({
       ].filter(Boolean)
     : []
 
-  return (
+  return createPortal((
     <div
-      className={`modal-backdrop absolute inset-0 z-[70] flex items-center justify-center bg-[rgba(20,19,15,0.65)] p-3 sm:p-4 ${shown ? '' : 'pointer-events-none'}`}
+      className={`modal-backdrop fixed inset-0 z-[70] flex items-center justify-center bg-[rgba(20,19,15,0.65)] p-3 sm:p-4 ${shown ? '' : 'pointer-events-none'}`}
       data-open={shown}
       onClick={close}
     >
@@ -238,5 +239,5 @@ export default function CastDetail({
         </div>
       </div>
     </div>
-  )
+  ), document.body)
 }
