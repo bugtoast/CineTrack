@@ -284,6 +284,28 @@ body {
   }
 }
 
+/* Tactile stamp settle when marking an episode. */
+@keyframes ct-stamp {
+  from {
+    transform: scale(0.95);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+/* Pen-stroke checkmark: draws left-to-right like a ruling pen. */
+@keyframes ct-check-draw {
+  from {
+    stroke-dashoffset: 24;
+    opacity: 0.2;
+  }
+  to {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
 /* Growing bars/meters: paint out from the left on first paint. */
 @keyframes ct-grow {
   from {
@@ -314,6 +336,13 @@ body {
 }
 .animate-tick {
   animation: ct-tick 380ms var(--ease-sheet) both;
+}
+.animate-stamp {
+  animation: ct-stamp var(--dur-quick) var(--ease-sheet) both;
+}
+.animate-check-draw {
+  stroke-dasharray: 24;
+  animation: ct-check-draw 220ms var(--ease-sheet) both;
 }
 .animate-rule {
   transform-origin: left;

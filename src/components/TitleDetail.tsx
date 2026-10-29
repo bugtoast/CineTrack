@@ -2095,7 +2095,10 @@ function Seasons({
                   <span className="rule-label">{(s.air_date ?? '').slice(0, 4)}</span>
                 </span>
                 <span className="font-sans text-[11px] tabular-nums text-muted-foreground">
-                  {seen}/{s.episode_count}
+                  <span className={seen >= s.episode_count ? 'font-medium text-[var(--primary)]' : 'text-foreground'}>
+                    {seen}
+                  </span>
+                  /{s.episode_count}
                 </span>
                 <span className="hidden h-[3px] w-24 bg-secondary sm:block">
                   <span
@@ -2165,30 +2168,26 @@ function Seasons({
                       key={e.id}
                       style={{ animationDelay: `${Math.min(i, 12) * 26}ms` }}
                       className={`group/ep animate-rise flex w-full items-center border-b border-border transition-colors duration-300 last:border-0 ${
-                        done ? 'bg-muted' : ''
+                        done ? 'bg-muted/40' : ''
                       }`}
                     >
                       <button
                         disabled={!tracked}
-                        title={completed && !rewatching ? 'Start a rewatch to track new episode progress' : undefined}
+                        title={
+                          !tracked
+                            ? completed && !rewatching
+                              ? 'Start a rewatch to track new episode progress'
+                              : 'Add to shelf to track episodes'
+                            : done
+                              ? `Watched${loggedAt ? ` · ${new Date(loggedAt).toLocaleDateString()}` : ''} · Click to unmark`
+                              : `Click to mark E${String(e.episode_number).padStart(2, '0')} watched`
+                        }
                         aria-pressed={done}
                         onClick={() => onToggle(s.season_number, e.episode_number)}
-                        className={`flex min-w-0 flex-1 items-center gap-4 px-4 py-3 text-left transition-colors ${
-                          tracked ? 'hover:bg-secondary' : 'cursor-default'
+                        className={`press flex min-w-0 flex-1 items-center gap-4 px-4 py-3 text-left transition-colors ${
+                          tracked ? 'hover:bg-secondary/60' : 'cursor-default'
                         }`}
                       >
-                        <span
-                          className={`flex h-4 w-4 shrink-0 items-center justify-center border text-[10px] transition-colors duration-200 ${
-                            done
-                              ? 'border-[var(--primary)] bg-[var(--primary)] text-primary-foreground'
-                              : 'border-border group-hover/ep:border-[var(--foreground)]'
-                          }`}
-                        >
-                          {done && <span className="animate-tick block leading-none">✓</span>}
-                        </span>
-                        <span className="w-9 shrink-0 font-sans text-[11px] tabular-nums text-muted-foreground">
-                          E{String(e.episode_number).padStart(2, '0')}
-                        </span>
                         {!settings.hideEpisodeCovers && (
                           <span className="relative hidden aspect-video w-[124px] shrink-0 overflow-hidden border border-border bg-muted sm:block">
                             {img(e.still_path, 'w185') ? (
@@ -2199,7 +2198,9 @@ function Seasons({
                                 decoding="async"
                                 width={185}
                                 height={104}
-                                className={`h-full w-full object-cover transition-all ${done ? 'opacity-55' : ''} ${settings.blurEpisodeCovers ? 'scale-110 blur-sm' : ''}`}
+                                className={`h-full w-full object-cover transition-all duration-300 ${
+                                  done ? 'opacity-60 saturate-[0.7]' : 'opacity-100'
+                                } ${settings.blurEpisodeCovers ? 'scale-110 blur-sm' : ''}`}
                               />
                             ) : (
                               <span className="flex h-full items-center justify-center font-sans text-[9px] uppercase tracking-[0.12em] text-muted-foreground">
@@ -2209,19 +2210,56 @@ function Seasons({
                           </span>
                         )}
                         <span className="min-w-0 flex-1">
-                          <span className={`block text-[14px] ${done ? 'text-muted-foreground line-through' : ''}`}>
+                          <span
+                            className={`block text-[14px] leading-snug transition-colors ${
+                              done ? 'text-muted-foreground line-through' : 'font-medium text-foreground'
+                            }`}
+                          >
                             {e.name}
                           </span>
                           {e.overview && !descriptionHidden && (
-                            <span className="mt-0.5 line-clamp-2 block text-[12px] leading-relaxed text-muted-foreground">
+                            <span className="mt-1 line-clamp-2 block text-[12px] leading-relaxed text-muted-foreground">
                               {e.overview}
                             </span>
                           )}
                         </span>
-                        <span className="hidden shrink-0 text-right font-sans text-[10px] tabular-nums text-muted-foreground sm:block">
-                          <span className="block">{formatEpisodeDate(e.air_date)}</span>
-                          {e.runtime ? <span className="block">{e.runtime} min</span> : null}
-                        </span>
+                        <div className="flex shrink-0 items-center gap-4">
+                          <span className="hidden text-right font-sans text-[10px] tabular-nums text-muted-foreground sm:block">
+                            <span className="block">{formatEpisodeDate(e.air_date)}</span>
+                            {e.runtime ? <span className="block">{e.runtime} min</span> : null}
+                          </span>
+                          <span
+                            className={`relative inline-flex h-8 min-w-[76px] shrink-0 items-center justify-center gap-2 border px-3 font-sans text-[12px] font-medium tabular-nums tracking-[0.06em] transition-all duration-200 ${
+                              done
+                                ? 'animate-stamp border-[var(--primary)] bg-[var(--primary)] text-primary-foreground shadow-xs group-hover/ep:brightness-105'
+                                : `border-border bg-card/80 text-muted-foreground ${
+                                    tracked
+                                      ? 'group-hover/ep:border-[var(--primary)] group-hover/ep:bg-[var(--primary)]/[0.08] group-hover/ep:text-[var(--primary)]'
+                                      : ''
+                                  }`
+                            }`}
+                          >
+                            {done && (
+                              <svg
+                                width="13"
+                                height="13"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.8"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className="shrink-0"
+                                aria-hidden
+                              >
+                                <path d="M4 12l5 5L20 6" className="animate-check-draw" />
+                              </svg>
+                            )}
+                            <span className="tracking-wide">
+                              E{String(e.episode_number).padStart(2, '0')}
+                            </span>
+                          </span>
+                        </div>
                       </button>
                     </div>
                   )
