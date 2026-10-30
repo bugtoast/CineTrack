@@ -122,12 +122,12 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
         data-open={shown}
       >
         <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/95 px-6 py-3 backdrop-blur">
-          <span className="rule-label">Settings · Archive preferences</span>
+          <span className="rule-label">Settings · Preferences</span>
           <CloseButton onClick={onClose} label="Close settings" />
         </header>
 
         <div className="divide-y divide-border">
-          <Group title="Theme" note="Ground and ink for the whole archive.">
+          <Group title="Appearance" note="Choose the color palette for CineTrack.">
             <div className="grid grid-cols-4 gap-3">
               {THEMES.map((t) => {
                 const active = settings.theme === t.id
@@ -172,7 +172,7 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
             </div>
           </Group>
 
-          <Group title="Identity" note="Name the archive and its chrome.">
+          <Group title="Archive identity" note="Choose the name shown in the masthead.">
             <div>
               <label htmlFor="archive-name" className="block text-[13px]">Archive name</label>
               <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
@@ -263,15 +263,15 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
                 </div>
               )}
             </div>
+          </Group>
+
+          <Group title="Layout & display" note="Adjust shelf grids and supporting details.">
             <Toggle
               label="Shortcut hints"
               note="Show keyboard hints in the navigation bar."
               value={settings.showNavHints}
               onChange={(v) => set('showNavHints', v)}
             />
-          </Group>
-
-          <Group title="Presentation" note="How plates and ledgers are laid out.">
             <NumberStepper
               label="Shelf items per row"
               note="Columns in shelf plates grid"
@@ -324,10 +324,10 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
             />
           </Group>
 
-          <Group title="Tracking" note="Defaults for logging what you watch.">
+          <Group title="Watch tracking" note="Set defaults for new titles and watch progress.">
             <OptionsRow
-              label="New titles land in"
-              note="Starting status for additions from Discover"
+              label="Default status for new titles"
+              note="Starting status when a title is added"
               value={settings.defaultStatus}
               options={[
                 { id: 'planned', label: 'Planned' },
@@ -336,14 +336,14 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
               onChange={(v) => set('defaultStatus', v)}
             />
             <Toggle
-              label="Open title after adding"
-              note="Jump into the title sheet right after accession."
+              label="Open details after adding"
+              note="Open the title page as soon as it is added."
               value={settings.openAfterAdd}
               onChange={(v) => set('openAfterAdd', v)}
             />
             <OptionsRow
-              label="Watch date prefill"
-              note="Date stamped when marking a title watched"
+              label="Default watch date"
+              note="Date to prefill when marking a title Watched"
               value={settings.defaultWatchDate}
               options={[
                 { id: 'today', label: 'Today' },
@@ -352,38 +352,48 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
               onChange={(v) => set('defaultWatchDate', v)}
             />
             <Toggle
+              label="Mark series Watched automatically"
+              note="Set a show to Watched when its final episode is marked."
+              value={settings.autoCompleteSeries}
+              onChange={(v) => set('autoCompleteSeries', v)}
+            />
+          </Group>
+
+          <Group title="Episode display" note="Choose what appears in TV episode lists.">
+            <Toggle
               label="Hide episode descriptions"
-              note="Hide descriptions for every installment."
+              note="Hide episode synopses in TV details."
               value={settings.hideSpoilers}
               onChange={(v) => set('hideSpoilers', v)}
             />
             <Toggle
-              label="Blur episode covers"
-              note="Blur still images in the episode list."
-              value={settings.blurEpisodeCovers}
+              label="Show episode covers"
+              note="Display still images in TV episode lists."
+              value={!settings.hideEpisodeCovers}
               onChange={(v) => {
-                if (v) set('hideEpisodeCovers', false)
-                set('blurEpisodeCovers', v)
+                set('hideEpisodeCovers', !v)
+                if (!v) set('blurEpisodeCovers', false)
               }}
             />
+            {!settings.hideEpisodeCovers && (
+              <div className="ml-3 border-l border-border pl-3">
+                <Toggle
+                  label="Blur episode covers"
+                  note="Apply a blur effect to episode stills."
+                  value={settings.blurEpisodeCovers}
+                  onChange={(v) => set('blurEpisodeCovers', v)}
+                />
+              </div>
+            )}
             <Toggle
-              label="Hide episode covers"
-              note="Remove still images from the episode list."
-              value={settings.hideEpisodeCovers}
-              onChange={(v) => {
-                if (v) set('blurEpisodeCovers', false)
-                set('hideEpisodeCovers', v)
-              }}
-            />
-            <Toggle
-              label="Show specials"
-              note="Include the Specials season in TV title details."
+              label="Show special episodes"
+              note="Include the Specials season in TV episode lists."
               value={settings.showSpecials}
               onChange={(v) => set('showSpecials', v)}
             />
           </Group>
 
-          <Group title="Shelf defaults" note="Where the shelves open.">
+          <Group title="Shelf defaults" note="Choose where and how your shelf opens.">
             <OptionsRow
               label="Default shelf tab"
               note="Tab selected when Shelf opens"
@@ -397,7 +407,7 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
               onChange={(v) => set('defaultShelfTab', v)}
             />
             <OptionsRow
-              label="Default order"
+              label="Default sort order"
               note="Sort applied when Shelf opens"
               value={settings.defaultSort}
               options={[
@@ -412,7 +422,7 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
             />
           </Group>
 
-          <Group title="Catalogue" note="Upstream catalogue behaviour.">
+          <Group title="Search & catalogue" note="Control search results and title metadata.">
             <Toggle
               label="Show adult titles"
               note="Include adult-rated films and series in search and discover results."
@@ -447,9 +457,9 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
             </div>
           </Group>
 
-          <Group title="Holdings & storage" note="Local archive state and persistence.">
+          <Group title="Library data" note="Review, back up, or manage your local library.">
             <div className="space-y-2">
-              <div className="rule-label text-[10px]">Shelf Overview</div>
+              <div className="rule-label text-[10px]">Library overview</div>
               <div className="grid grid-cols-3 gap-2 border border-border bg-card p-3">
                 <div>
                   <dt className="rule-label text-[9px]">Films</dt>
@@ -479,7 +489,7 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
             </div>
 
             <div className="pt-3 border-t border-border">
-              <div className="rule-label mb-2 text-[10px]">Shelf portability</div>
+              <div className="rule-label mb-2 text-[10px]">Backup & restore</div>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
