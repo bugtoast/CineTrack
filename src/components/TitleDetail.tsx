@@ -34,6 +34,7 @@ import { useToast } from './Toast'
 import CastDetail from './CastDetail'
 
 const MAX_AUTO_EPISODES = 20000
+const DRAWER_TRANSITION_MS = 320
 
 function markAllEpisodes(seasons: SeasonSummary[], at: number, seed: Record<string, number> = {}) {
   const marked = { ...seed }
@@ -106,11 +107,22 @@ export default function TitleDetail({
 
   // Slide the drawer in on mount, out on close.
   const [shown, setShown] = useState(false)
+  const [panelSettled, setPanelSettled] = useState(false)
   const onClose = useCallback(() => {
     setShown(false)
     if (closeTimer.current) window.clearTimeout(closeTimer.current)
-    closeTimer.current = window.setTimeout(requestClose, 320) // matches the panel slide-out duration
+    closeTimer.current = window.setTimeout(requestClose, DRAWER_TRANSITION_MS)
   }, [requestClose])
+
+  useEffect(() => {
+    if (!shown) {
+      setPanelSettled(false)
+      return
+    }
+    const delay = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : DRAWER_TRANSITION_MS
+    const timer = window.setTimeout(() => setPanelSettled(true), delay)
+    return () => window.clearTimeout(timer)
+  }, [shown])
 
   useEffect(
     () => () => {
@@ -573,6 +585,7 @@ export default function TitleDetail({
                     completed={isCompletedAtLeastOnce(entry)}
                     rewatching={!!entry?.rewatching}
                     continueFromProgress={entry?.status === 'watching' || !!entry?.rewatching}
+                    panelSettled={panelSettled}
                     onAdd={() => add({ status: 'watching' })}
                     onToggle={(s, e) => toggleEpisode(id, s, e)}
                     onBulk={(s, nums, w) => setSeasonWatched(id, s, nums, w)}
@@ -1945,6 +1958,7 @@ function Seasons({
   completed,
   rewatching,
   continueFromProgress,
+  panelSettled,
   onAdd,
   onToggle,
   onBulk,
@@ -1956,6 +1970,7 @@ function Seasons({
   completed: boolean
   rewatching: boolean
   continueFromProgress: boolean
+  panelSettled: boolean
   onAdd: () => void
   onToggle: (s: number, e: number) => void
   onBulk: (s: number, nums: number[], watched: boolean) => void
@@ -1964,13 +1979,15 @@ function Seasons({
   const ordered = [...seasons].sort((a, b) =>
     a.season_number === 0 ? 1 : b.season_number === 0 ? -1 : a.season_number - b.season_number,
   ).filter((season) => settings.showSpecials || season.season_number !== 0)
-  const lastMarkedSeason = Object.entries(watched).reduce<{ season: number; at: number } | null>((latest, [key, at]) => {
+  const lastMarkedEpisode = Object.entries(watched).reduce<{ season: number; episode: number; at: number } | null>((latest, [key, at]) => {
     const [seasonText, episodeText] = key.split('-')
     const season = Number(seasonText)
     const episode = Number(episodeText)
     if (!Number.isSafeInteger(season) || !Number.isSafeInteger(episode) || !Number.isFinite(at)) return latest
-    return !latest || at > latest.at ? { season, at } : latest
-  }, null)?.season
+    return !latest || at >= latest.at ? { season, episode, at } : latest
+  }, null)
+  const lastMarkedSeason = lastMarkedEpisode?.season
+  const lastMarkedKey = lastMarkedEpisode ? epKey(lastMarkedEpisode.season, lastMarkedEpisode.episode) : null
   const [open, setOpen] = useState<number>(
     continueFromProgress && lastMarkedSeason != null && ordered.some((s) => s.season_number === lastMarkedSeason)
       ? lastMarkedSeason
@@ -1982,6 +1999,9 @@ function Seasons({
   const [seasonAttempt, setSeasonAttempt] = useState(0)
   const [confirmClear, setConfirmClear] = useState<number | null>(null)
   const fetchedRef = useRef<Set<number>>(new Set())
+  const didSelectProgressSeasonRef = useRef(false)
+  const progressEpisodeRef = useRef<HTMLDivElement | null>(null)
+  const didRestoreProgressRef = useRef(false)
   const hideDescriptions = settings.hideSpoilers
   const { toast } = useToast()
 
@@ -1994,6 +2014,21 @@ function Seasons({
     ? open
     : ordered[0]?.season_number ?? null
   const current = ordered.find((s) => s.season_number === visibleOpen) ?? ordered[0]
+
+  useEffect(() => {
+    if (!continueFromProgress) {
+      didSelectProgressSeasonRef.current = false
+      didRestoreProgressRef.current = false
+      return
+    }
+    if (
+      didSelectProgressSeasonRef.current ||
+      lastMarkedSeason == null ||
+      !ordered.some((s) => s.season_number === lastMarkedSeason)
+    ) return
+    didSelectProgressSeasonRef.current = true
+    setOpen(lastMarkedSeason)
+  }, [continueFromProgress, lastMarkedSeason, settings.showSpecials])
 
   useEffect(() => {
     if (visibleOpen == null) {
@@ -2025,6 +2060,26 @@ function Seasons({
       controller.abort()
     }
   }, [visibleOpen, showId, seasonAttempt])
+
+  useEffect(() => {
+    if (!continueFromProgress || !panelSettled || didRestoreProgressRef.current || !lastMarkedEpisode) return
+    if (visibleOpen == null || visibleOpen !== lastMarkedEpisode.season) return
+    const seasonEpisodes = episodes[lastMarkedEpisode.season]
+    if (!seasonEpisodes?.some((episode) => episode.episode_number === lastMarkedEpisode.episode)) return
+
+    const target = progressEpisodeRef.current
+    if (!target) return
+    const scrollArea = target.closest<HTMLElement>('.quiet-scroll')
+    if (!scrollArea) return
+    const targetRect = target.getBoundingClientRect()
+    const scrollAreaRect = scrollArea.getBoundingClientRect()
+    const top = scrollArea.scrollTop + targetRect.top - scrollAreaRect.top - (scrollArea.clientHeight - targetRect.height) / 2
+    didRestoreProgressRef.current = true
+    scrollArea.scrollTo({
+      top,
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    })
+  }, [continueFromProgress, panelSettled, episodes, lastMarkedEpisode?.season, lastMarkedEpisode?.episode, visibleOpen])
 
   const seenIn = (s: { season_number: number; episode_count: number }) => {
     const eps = episodes[s.season_number]
@@ -2159,7 +2214,7 @@ function Seasons({
                     </button>
                   </div>
                 )}
-                {eps?.map((e, i) => {
+                {eps?.map((e) => {
                   const loggedAt = watched[epKey(s.season_number, e.episode_number)]
                   const done = loggedAt != null
                   const episodeLabel = `E${String(e.episode_number).padStart(2, '0')}`
@@ -2167,8 +2222,8 @@ function Seasons({
                   return (
                     <div
                       key={e.id}
-                      style={{ animationDelay: `${Math.min(i, 12) * 26}ms` }}
-                      className={`group/ep animate-rise flex w-full items-center border-b border-border transition-colors duration-300 last:border-b-0 ${
+                      ref={lastMarkedKey === epKey(s.season_number, e.episode_number) ? progressEpisodeRef : undefined}
+                      className={`group/ep flex w-full items-center border-b border-border transition-colors duration-300 last:border-b-0 ${
                         done ? 'bg-[var(--primary)]/[0.09]' : ''
                       }`}
                     >
