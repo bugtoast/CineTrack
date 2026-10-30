@@ -166,31 +166,18 @@ export default function App() {
           </nav>
 
           <div className="flex items-center justify-end gap-4 py-3">
+            <button
+              onClick={() => setSettingsOpen((v) => !v)}
+              aria-label="Open settings"
+              title={settings.showNavHints ? `Settings (${navModifier()},)` : 'Settings'}
+              className="press flex h-8 items-center gap-2 border border-border px-3 font-sans text-[10px] font-medium uppercase tracking-[0.12em] text-secondary-foreground transition-colors hover:border-foreground hover:text-foreground"
+            >
+              <span>Settings</span>
               {settings.showNavHints && (
-                <span className="font-sans text-[10px] tracking-[0.1em] text-muted-foreground">
+                <span aria-hidden className="text-[10px] tracking-[0.08em] text-muted-foreground">
                   {navModifier()},
                 </span>
               )}
-              <button
-                onClick={() => setSettingsOpen((v) => !v)}
-                aria-label="Open settings"
-                className="press group flex h-8 w-8 items-center justify-center text-secondary-foreground transition-colors hover:text-foreground"
-              >
-              <svg
-                width="15"
-                height="15"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.9"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="transition-transform duration-500 group-hover:rotate-90"
-                aria-hidden="true"
-              >
-                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
             </button>
           </div>
         </div>
