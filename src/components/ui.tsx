@@ -1021,9 +1021,11 @@ export function CloseButton({ onClick, label = 'Close' }: { onClick: () => void;
       type="button"
       onClick={onClick}
       aria-label={label}
+      aria-keyshortcuts="Escape"
       className="press inline-flex h-8 shrink-0 items-center justify-center border border-border bg-background px-3 font-sans text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground transition-colors hover:border-[var(--foreground)] hover:text-foreground"
     >
       Close
+      <kbd className="ml-2 border border-current/30 px-1 py-0.5 font-sans text-[8px] leading-none tracking-normal opacity-70">Esc</kbd>
     </button>
   )
 }
