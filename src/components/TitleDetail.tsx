@@ -2162,13 +2162,14 @@ function Seasons({
                 {eps?.map((e, i) => {
                   const loggedAt = watched[epKey(s.season_number, e.episode_number)]
                   const done = loggedAt != null
+                  const episodeLabel = `E${String(e.episode_number).padStart(2, '0')}`
                   const descriptionHidden = hideDescriptions
                   return (
                     <div
                       key={e.id}
                       style={{ animationDelay: `${Math.min(i, 12) * 26}ms` }}
-                      className={`group/ep animate-rise flex w-full items-center border-b border-border transition-colors duration-300 last:border-0 ${
-                        done ? 'bg-muted/40' : ''
+                      className={`group/ep animate-rise flex w-full items-center border-b border-border transition-colors duration-300 last:border-b-0 ${
+                        done ? 'bg-[var(--primary)]/[0.09]' : ''
                       }`}
                     >
                       <button
@@ -2180,7 +2181,16 @@ function Seasons({
                               : 'Add to shelf to track episodes'
                             : done
                               ? `Watched${loggedAt ? ` · ${new Date(loggedAt).toLocaleDateString()}` : ''} · Click to unmark`
-                              : `Click to mark E${String(e.episode_number).padStart(2, '0')} watched`
+                              : `Click to mark ${episodeLabel} watched`
+                        }
+                        aria-label={
+                          !tracked
+                            ? completed && !rewatching
+                              ? `Start a rewatch to track ${episodeLabel}`
+                              : 'Add to shelf to track episodes'
+                            : done
+                              ? `Unmark ${episodeLabel} watched`
+                              : `Mark ${episodeLabel} watched`
                         }
                         aria-pressed={done}
                         onClick={() => onToggle(s.season_number, e.episode_number)}
@@ -2229,17 +2239,17 @@ function Seasons({
                             {e.runtime ? <span className="block">{e.runtime} min</span> : null}
                           </span>
                           <span
-                            className={`relative inline-flex h-8 min-w-[76px] shrink-0 items-center justify-center gap-2 border px-3 font-sans text-[12px] font-medium tabular-nums tracking-[0.06em] transition-all duration-200 ${
+                            className={`relative inline-flex h-8 min-w-[72px] shrink-0 items-center justify-center gap-1.5 border px-2.5 font-sans text-[11px] font-medium tabular-nums tracking-[0.06em] transition-all duration-200 ${
                               done
-                                ? 'animate-stamp border-[var(--primary)] bg-[var(--primary)] text-primary-foreground shadow-xs group-hover/ep:brightness-105'
-                                : `border-border bg-card/80 text-muted-foreground ${
+                                ? 'animate-stamp border-[var(--primary)]/[0.38] bg-[var(--primary)]/[0.08] text-[var(--primary)] group-hover/ep:bg-[var(--primary)]/[0.13]'
+                                : `border-border bg-card text-muted-foreground ${
                                     tracked
-                                      ? 'group-hover/ep:border-[var(--primary)] group-hover/ep:bg-[var(--primary)]/[0.08] group-hover/ep:text-[var(--primary)]'
-                                      : ''
+                                      ? 'group-hover/ep:border-[var(--primary)] group-hover/ep:bg-[var(--primary)]/[0.06] group-hover/ep:text-[var(--primary)]'
+                                      : 'opacity-70'
                                   }`
                             }`}
                           >
-                            {done && (
+                            {done ? (
                               <svg
                                 width="13"
                                 height="13"
@@ -2254,9 +2264,23 @@ function Seasons({
                               >
                                 <path d="M4 12l5 5L20 6" className="animate-check-draw" />
                               </svg>
-                            )}
+                            ) : tracked ? (
+                              <svg
+                                width="13"
+                                height="13"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                aria-hidden
+                                className="shrink-0"
+                              >
+                                <path d="M12 5v14M5 12h14" />
+                              </svg>
+                            ) : null}
                             <span className="tracking-wide">
-                              E{String(e.episode_number).padStart(2, '0')}
+                              {episodeLabel}
                             </span>
                           </span>
                         </div>
