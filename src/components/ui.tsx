@@ -1022,10 +1022,11 @@ export function CloseButton({ onClick, label = 'Close' }: { onClick: () => void;
       onClick={onClick}
       aria-label={label}
       aria-keyshortcuts="Escape"
-      className="press inline-flex h-8 shrink-0 items-center justify-center border border-border bg-background px-3 font-sans text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground transition-colors hover:border-[var(--foreground)] hover:text-foreground"
+      className="press inline-flex size-8 shrink-0 items-center justify-center border border-border bg-background text-muted-foreground transition-colors hover:border-[var(--foreground)] hover:text-foreground"
     >
-      Close
-      <kbd className="ml-2 border border-current/30 px-1 py-0.5 font-sans text-[8px] leading-none tracking-normal opacity-70">Esc</kbd>
+      <svg aria-hidden="true" viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square">
+        <path d="m4 4 8 8M12 4l-8 8" />
+      </svg>
     </button>
   )
 }
