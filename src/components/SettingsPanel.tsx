@@ -272,28 +272,28 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
               value={settings.showNavHints}
               onChange={(v) => set('showNavHints', v)}
             />
-            <NumberStepper
+            <NumberChoices
               label="Shelf items per row"
               note="Columns in shelf plates grid"
               value={settings.libraryColumns}
               min={3}
-              max={12}
+              max={10}
               onChange={(v) => set('libraryColumns', v)}
             />
-            <NumberStepper
+            <NumberChoices
               label="Discover items per row"
               note="Columns in discover plates grid"
               value={settings.discoverColumns}
               min={3}
-              max={12}
+              max={10}
               onChange={(v) => set('discoverColumns', v)}
             />
-            <NumberStepper
+            <NumberChoices
               label="For You suggestions per row"
               note="Each category shelf stacks two rows"
               value={settings.shelfColumns}
               min={3}
-              max={12}
+              max={10}
               onChange={(v) => set('shelfColumns', v)}
             />
             <OptionsRow
@@ -639,12 +639,12 @@ function OptionsRow<T extends string>({
   )
 }
 
-function NumberStepper({
+function NumberChoices({
   label,
   note,
   value,
   min = 3,
-  max = 12,
+  max = 10,
   onChange,
 }: {
   label: string
@@ -654,34 +654,42 @@ function NumberStepper({
   max?: number
   onChange: (v: number) => void
 }) {
+  const choices = Array.from({ length: max - min + 1 }, (_, index) => min + index)
+
   return (
-    <div className="flex items-center justify-between gap-3">
+    <div>
       <div>
         <span className="block text-[13px]">{label}</span>
         {note && <span className="rule-label mt-0.5 block text-[10px]">{note}</span>}
       </div>
-      <div className="flex items-center border border-border bg-card">
-        <button
-          type="button"
-          disabled={value <= min}
-          onClick={() => onChange(Math.max(min, value - 1))}
-          aria-label={`Decrease ${label}`}
-          className="press flex h-7 w-7 items-center justify-center font-sans text-[13px] font-medium text-muted-foreground hover:bg-background hover:text-foreground disabled:pointer-events-none disabled:opacity-25"
-        >
-          −
-        </button>
-        <span className="flex h-7 w-8 items-center justify-center border-x border-border font-sans text-[11px] font-medium tabular-nums text-foreground">
-          {value}
-        </span>
-        <button
-          type="button"
-          disabled={value >= max}
-          onClick={() => onChange(Math.min(max, value + 1))}
-          aria-label={`Increase ${label}`}
-          className="press flex h-7 w-7 items-center justify-center font-sans text-[13px] font-medium text-muted-foreground hover:bg-background hover:text-foreground disabled:pointer-events-none disabled:opacity-25"
-        >
-          +
-        </button>
+      <div
+        className="mt-2 grid gap-1"
+        style={{ gridTemplateColumns: `repeat(${choices.length}, minmax(0, 1fr))` }}
+        role="radiogroup"
+        aria-label={label}
+        onKeyDown={handleRadioGroupKeyDown}
+      >
+        {choices.map((count) => {
+          const active = value === count
+          return (
+            <button
+              key={count}
+              type="button"
+              role="radio"
+              aria-label={`${count} items per row`}
+              aria-checked={active}
+              tabIndex={active ? 0 : -1}
+              onClick={() => onChange(count)}
+              className={`press flex aspect-square min-w-0 items-center justify-center border font-sans text-base font-medium tabular-nums transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)] ${
+                active
+                  ? 'border-[var(--primary)] bg-[var(--primary)] text-primary-foreground'
+                  : 'border-border bg-card text-muted-foreground hover:border-[var(--primary)] hover:text-foreground'
+              }`}
+            >
+              {count}
+            </button>
+          )
+        })}
       </div>
     </div>
   )

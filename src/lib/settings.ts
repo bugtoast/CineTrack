@@ -140,9 +140,9 @@ function sanitize(s: Partial<Settings> & Record<string, unknown>): Settings {
   if (typeof s.metadataLanguage === 'string' && LANGUAGES.some((l) => l.id === s.metadataLanguage)) {
     out.metadataLanguage = s.metadataLanguage
   }
-  out.libraryColumns = clamp(s.libraryColumns, 3, 12, DEFAULTS.libraryColumns)
-  out.discoverColumns = clamp(s.discoverColumns, 3, 12, DEFAULTS.discoverColumns)
-  out.shelfColumns = clamp(s.shelfColumns, 3, 12, DEFAULTS.shelfColumns)
+  out.libraryColumns = clamp(s.libraryColumns, 3, 10, DEFAULTS.libraryColumns)
+  out.discoverColumns = clamp(s.discoverColumns, 3, 10, DEFAULTS.discoverColumns)
+  out.shelfColumns = clamp(s.shelfColumns, 3, 10, DEFAULTS.shelfColumns)
   out.includeAdult = !!s.includeAdult
   return out
 }
@@ -399,7 +399,7 @@ export function useSettings() {
     // Validate per-key
     if (key === 'theme' && !THEMES.some((t) => t.id === value)) sanitized = DEFAULTS.theme as Settings[K]
     if ((key === 'libraryColumns' || key === 'discoverColumns' || key === 'shelfColumns') && typeof value === 'number') {
-      sanitized = clamp(value as unknown as number, 3, 12, (DEFAULTS as Record<string, unknown>)[key] as number) as Settings[K]
+      sanitized = clamp(value as unknown as number, 3, 10, (DEFAULTS as Record<string, unknown>)[key] as number) as Settings[K]
     }
     if ((key === 'density' && value !== 'comfortable' && value !== 'compact')) {
       return
