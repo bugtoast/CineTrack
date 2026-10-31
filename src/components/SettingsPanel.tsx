@@ -127,7 +127,7 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
         </header>
 
         <div className="divide-y divide-border">
-          <Group title="Appearance" note="Choose the color palette for CineTrack.">
+          <Group title="Appearance">
             <div className="grid grid-cols-4 gap-3">
               {THEMES.map((t) => {
                 const active = settings.theme === t.id
@@ -172,11 +172,11 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
             </div>
           </Group>
 
-          <Group title="Archive identity" note="Choose the name shown in the masthead.">
+          <Group title="Archive identity">
             <div>
               <label htmlFor="archive-name" className="block text-[13px]">Archive name</label>
               <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                <span id="archive-name-hint" className="rule-label">Shown in the home masthead</span>
+                <span id="archive-name-hint" className="text-[11px] text-muted-foreground">Shown in the home masthead</span>
                 <span
                   id="archive-name-count"
                   aria-label={`${archiveNameLength} of ${ARCHIVE_NAME_MAX_LENGTH} characters`}
@@ -206,7 +206,7 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
                     <span id="archive-highlight-label" className="block text-[13px]">Masthead highlights</span>
                     <span className="rule-label">{italicWordIndices.length} of {archiveWords.length} selected</span>
                   </div>
-                  <span id="archive-highlight-hint" className="rule-label mt-0.5 block">Choose one or more words to italicize and color with your accent.</span>
+                  <span id="archive-highlight-hint" className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">Choose one or more words to italicize and color with your accent.</span>
                   <div role="group" aria-labelledby="archive-highlight-label" aria-describedby="archive-highlight-hint" className="mt-2 flex flex-wrap gap-1.5">
                     {archiveWords.map((word, index) => {
                       const selected = italicWordIndices.includes(index)
@@ -265,16 +265,14 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
             </div>
           </Group>
 
-          <Group title="Layout & display" note="Adjust shelf grids and supporting details.">
+          <Group title="Layout & display">
             <Toggle
               label="Shortcut hints"
-              note="Show keyboard hints in the navigation bar."
               value={settings.showNavHints}
               onChange={(v) => set('showNavHints', v)}
             />
             <NumberChoices
               label="Shelf items per row"
-              note="Columns in shelf plates grid"
               value={settings.libraryColumns}
               min={3}
               max={10}
@@ -282,7 +280,6 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
             />
             <NumberChoices
               label="Discover items per row"
-              note="Columns in discover plates grid"
               value={settings.discoverColumns}
               min={3}
               max={10}
@@ -324,10 +321,9 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
             />
           </Group>
 
-          <Group title="Watch tracking" note="Set defaults for new titles and watch progress.">
+          <Group title="Watch tracking">
             <OptionsRow
               label="Default status for new titles"
-              note="Starting status when a title is added"
               value={settings.defaultStatus}
               options={[
                 { id: 'planned', label: 'Planned' },
@@ -337,13 +333,11 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
             />
             <Toggle
               label="Open details after adding"
-              note="Open the title page as soon as it is added."
               value={settings.openAfterAdd}
               onChange={(v) => set('openAfterAdd', v)}
             />
             <OptionsRow
               label="Default watch date"
-              note="Date to prefill when marking a title Watched"
               value={settings.defaultWatchDate}
               options={[
                 { id: 'today', label: 'Today' },
@@ -359,10 +353,9 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
             />
           </Group>
 
-          <Group title="Episode display" note="Choose what appears in TV episode lists.">
+          <Group title="Episode display">
             <Toggle
               label="Hide episode descriptions"
-              note="Hide episode synopses in TV details."
               value={settings.hideSpoilers}
               onChange={(v) => set('hideSpoilers', v)}
             />
@@ -379,7 +372,6 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
               <div className="ml-3 border-l border-border pl-3">
                 <Toggle
                   label="Blur episode covers"
-                  note="Apply a blur effect to episode stills."
                   value={settings.blurEpisodeCovers}
                   onChange={(v) => set('blurEpisodeCovers', v)}
                 />
@@ -393,10 +385,9 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
             />
           </Group>
 
-          <Group title="Shelf defaults" note="Choose where and how your shelf opens.">
+          <Group title="Shelf defaults">
             <OptionsRow
               label="Default shelf tab"
-              note="Tab selected when Shelf opens"
               value={settings.defaultShelfTab}
               options={[
                 { id: 'all', label: 'All' },
@@ -408,7 +399,6 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
             />
             <OptionsRow
               label="Default sort order"
-              note="Sort applied when Shelf opens"
               value={settings.defaultSort}
               options={[
                 { id: 'added', label: 'Recently added' },
@@ -422,7 +412,7 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
             />
           </Group>
 
-          <Group title="Search & catalogue" note="Control search results and title metadata.">
+          <Group title="Search & catalogue">
             <Toggle
               label="Show adult titles"
               note="Include adult-rated films and series in search and discover results."
@@ -431,7 +421,7 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
             />
             <div>
               <span className="block text-[13px]">Metadata language</span>
-              <span className="rule-label mt-0.5 block">Titles and synopses served by TMDb</span>
+              <span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">Titles and synopses served by TMDb</span>
               <div className="relative mt-2">
                 <select
                   value={settings.metadataLanguage}
@@ -457,7 +447,7 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
             </div>
           </Group>
 
-          <Group title="Library data" note="Review, back up, or manage your local library.">
+          <Group title="Library data">
             <div className="space-y-2">
               <div className="rule-label text-[10px]">Library overview</div>
               <div className="grid grid-cols-3 gap-2 border border-border bg-card p-3">
@@ -555,18 +545,15 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
 
 function Group({
   title,
-  note,
   children,
 }: {
   title: string
-  note?: string
   children: React.ReactNode
 }) {
   return (
     <section className="px-6 py-6">
       <div className="mb-4">
         <h3 className="font-display text-[22px] leading-none">{title}</h3>
-        {note && <p className="mt-1 text-[12px] text-muted-foreground">{note}</p>}
       </div>
       <div className="space-y-4">{children}</div>
     </section>
@@ -580,7 +567,7 @@ function Toggle({
   onChange,
 }: {
   label: string
-  note: string
+  note?: string
   value: boolean
   onChange: (v: boolean) => void
 }) {
@@ -593,7 +580,7 @@ function Toggle({
     >
       <span>
         <span className="block text-[13px]">{label}</span>
-        <span className="rule-label">{note}</span>
+        {note && <span className="block text-[11px] leading-relaxed text-muted-foreground">{note}</span>}
       </span>
       <span
         className={`relative box-border block h-5 w-10 shrink-0 border transition-colors ${
@@ -627,7 +614,7 @@ function OptionsRow<T extends string>({
   return (
     <div>
       <span className="block text-[13px]">{label}</span>
-      {note && <span className="rule-label mt-0.5 block">{note}</span>}
+      {note && <span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">{note}</span>}
       <div className="mt-2 flex flex-wrap gap-1.5" role="radiogroup" aria-label={label} onKeyDown={handleRadioGroupKeyDown}>
         {options.map((o) => (
           <Chip key={o.id} role="radio" active={value === o.id} onClick={() => onChange(o.id)}>
@@ -660,7 +647,7 @@ function NumberChoices({
     <div>
       <div>
         <span className="block text-[13px]">{label}</span>
-        {note && <span className="rule-label mt-0.5 block text-[10px]">{note}</span>}
+        {note && <span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">{note}</span>}
       </div>
       <div
         className="mt-2 grid gap-1"
